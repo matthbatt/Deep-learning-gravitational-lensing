@@ -1,0 +1,161 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch.utils.data import Dataset, DataLoader
+from astropy.io import fits
+import numpy as np
+import random
+
+################################################################# Load Dataset
+
+class LensDataset(Dataset):
+    def __init__(self, df, path_tensor_folder):
+        self.df = df
+        self.path = path_tensor_folder
+
+    def __len__(self):
+        return len(self.df)
+
+    def __getitem__(self, idx):
+        row = self.df.iloc[idx]
+
+        # filename stored in df, e.g. "sample_0001.pt"
+        tensor_path = os.path.join(self.path, row.name.split('/')[1] + '.pt')
+
+        # load the tensor
+        x = torch.load(tensor_path)
+        x = torch.clamp(x, min=0)
+        x = torch.sqrt(x)
+
+        # label
+        y = torch.tensor(row.values, dtype=torch.float32)
+
+        return x, y
+
+
+##################################################################### ResNetHoliSmokes
+
+class BasicBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, stride=1):
+        super().__init__()
+
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3,
+                               stride=stride, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(out_channels)
+
+        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3,
+                               padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(out_channels)
+
+        # projection if channels or stride change
+        self.shortcut = nn.Sequential()
+        if stride != 1 or in_channels != out_channels:
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_channels, out_channels, kernel_size=1,
+                          stride=stride, bias=False),
+                nn.BatchNorm2d(out_channels)
+            )
+
+    def forward(self, x):
+        identity = self.shortcut(x)
+
+        out = F.relu(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+
+        out += identity
+        return F.relu(out)
+
+
+class ResNetHoliSmokes(nn.Module):
+    def __init__(self, num_outputs=5):
+        super().__init__()
+
+        # Input: 4 channels (g,r,i,z)
+        self.conv_in = nn.Conv2d(4, 32, kernel_size=3, padding=1, bias=False)
+        self.bn_in = nn.BatchNorm2d(32)
+
+        # 4 residual stages
+        self.layer1 = BasicBlock(32, 32)
+        self.pool1 = nn.MaxPool2d(2)
+
+        self.layer2 = BasicBlock(32, 64, stride=1)
+        self.pool2 = nn.MaxPool2d(2)
+
+        self.layer3 = BasicBlock(64, 128, stride=1)
+        self.pool3 = nn.MaxPool2d(2)
+
+        self.layer4 = BasicBlock(128, 256, stride=1)
+        self.pool4 = nn.MaxPool2d(2)
+
+        # Regression head
+        self.fc = nn.Sequential(
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Linear(128, num_outputs)
+        )
+
+    def forward(self, x):
+        x = F.relu(self.bn_in(self.conv_in(x)))
+
+        x = self.pool1(self.layer1(x))
+        x = self.pool2(self.layer2(x))
+        x = self.pool3(self.layer3(x))
+        x = self.pool4(self.layer4(x))
+
+        # Global average pooling
+        x = x.mean(dim=[2, 3])  # shape: [B, 256]
+
+        return self.fc(x)
+    
+    
+
+############################################################################################################ ResNetMini
+import torch.nn as nn
+import torch
+
+class ResidualBlock(nn.Module):
+    def __init__(self, channels):
+        super().__init__()
+        self.conv1 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
+        self.bn1 = nn.BatchNorm2d(channels)
+        self.conv2 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
+        self.bn2 = nn.BatchNorm2d(channels)
+
+    def forward(self, x):
+        identity = x
+        out = torch.relu(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+        out += identity
+        return torch.relu(out)
+
+class ResNetMini(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv_in = nn.Conv2d(4, 16, kernel_size=3, padding=1)
+        self.bn_in = nn.BatchNorm2d(16)
+
+        self.block1 = ResidualBlock(16)
+        self.pool1 = nn.MaxPool2d(2)
+
+        self.block2 = ResidualBlock(16)
+        self.pool2 = nn.MaxPool2d(2)
+
+        self.block3 = ResidualBlock(16)
+        self.pool3 = nn.MaxPool2d(2)
+
+        self.fc = nn.Linear(16 * 17 * 17, 5)  # adjust if input size changes
+
+    def forward(self, x):
+        x = torch.relu(self.bn_in(self.conv_in(x)))
+        x = self.pool1(self.block1(x))
+        x = self.pool2(self.block2(x))
+        x = self.pool3(self.block3(x))
+        x = x.view(x.size(0), -1)
+        return self.fc(x)
+
+
+# dimensions X = [2000, 4, 140, 140]
+# then [2000, 8, 140, 140] because padding of 1, and 8 filters of size 3x3
+# max pool [2000, 8, 70, 70]
+## [2000, 16, 70, 70]
+# max pool [2000, 16, 35, 35]
