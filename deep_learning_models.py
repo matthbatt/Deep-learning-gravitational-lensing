@@ -5,6 +5,7 @@ from torch.utils.data import Dataset, DataLoader
 from astropy.io import fits
 import numpy as np
 import random
+import os
 
 ################################################################# Load Dataset
 
@@ -31,9 +32,55 @@ class LensDataset(Dataset):
         y = torch.tensor(row.values, dtype=torch.float32)
 
         return x, y
+    
+
+########################################################################################################## ResNet Mini
+import torch.nn as nn
+import torch
+
+class ResidualBlock(nn.Module):
+    def __init__(self, channels):
+        super().__init__()
+        self.conv1 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
+        self.bn1 = nn.BatchNorm2d(channels)
+        self.conv2 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
+        self.bn2 = nn.BatchNorm2d(channels)
+
+    def forward(self, x):
+        identity = x
+        out = torch.relu(self.bn1(self.conv1(x)))
+        out = self.bn2(self.conv2(out))
+        out += identity
+        return torch.relu(out)
+
+class ResNetMini(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv_in = nn.Conv2d(4, 16, kernel_size=3, padding=1)
+        self.bn_in = nn.BatchNorm2d(16)
+
+        self.block1 = ResidualBlock(16)
+        self.pool1 = nn.MaxPool2d(2)
+
+        self.block2 = ResidualBlock(16)
+        self.pool2 = nn.MaxPool2d(2)
+
+        self.block3 = ResidualBlock(16)
+        self.pool3 = nn.MaxPool2d(2)
+
+        self.fc = nn.Linear(16 * 17 * 17, 5)  # adjust if input size changes
+
+    def forward(self, x):
+        x = torch.relu(self.bn_in(self.conv_in(x)))
+        x = self.pool1(self.block1(x))
+        x = self.pool2(self.block2(x))
+        x = self.pool3(self.block3(x))
+        x = x.view(x.size(0), -1)
+        return self.fc(x)
+    
 
 
-##################################################################### ResNetHoliSmokes
+##################################################################### ResNetHoliSmokes and Baysian neuron network
 
 class BasicBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1):
@@ -106,52 +153,76 @@ class ResNetHoliSmokes(nn.Module):
         x = x.mean(dim=[2, 3])  # shape: [B, 256]
 
         return self.fc(x)
-    
-    
+   
 
-############################################################################################################ ResNetMini
-import torch.nn as nn
-import torch
-
-class ResidualBlock(nn.Module):
-    def __init__(self, channels):
+class BayesianLinear(nn.Module):
+    def __init__(self, in_features, out_features):
         super().__init__()
-        self.conv1 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
-        self.bn1 = nn.BatchNorm2d(channels)
-        self.conv2 = nn.Conv2d(channels, channels, kernel_size=3, padding=1)
-        self.bn2 = nn.BatchNorm2d(channels)
+        self.weight_mu = nn.Parameter(torch.Tensor(out_features, in_features))
+        self.weight_rho = nn.Parameter(torch.Tensor(out_features, in_features))
+
+        self.bias_mu = nn.Parameter(torch.Tensor(out_features))
+        self.bias_rho = nn.Parameter(torch.Tensor(out_features))
+
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        std = 0.1
+        self.weight_mu.data.normal_(0, std)
+        self.weight_rho.data.normal_(-3, std)
+        self.bias_mu.data.normal_(0, std)
+        self.bias_rho.data.normal_(-3, std)
+
+    def sample_weights(self):
+        weight_sigma = torch.log1p(torch.exp(self.weight_rho))
+        bias_sigma = torch.log1p(torch.exp(self.bias_rho))
+
+        eps_w = torch.randn_like(weight_sigma)
+        eps_b = torch.randn_like(bias_sigma)
+
+        weight = self.weight_mu + weight_sigma * eps_w
+        bias = self.bias_mu + bias_sigma * eps_b
+
+        return weight, bias
 
     def forward(self, x):
-        identity = x
-        out = torch.relu(self.bn1(self.conv1(x)))
-        out = self.bn2(self.conv2(out))
-        out += identity
-        return torch.relu(out)
+        weight, bias = self.sample_weights()
+        return F.linear(x, weight, bias)
 
-class ResNetMini(nn.Module):
+   
+class BayesianResNetMini(nn.Module):
     def __init__(self):
         super().__init__()
-        self.conv_in = nn.Conv2d(4, 16, kernel_size=3, padding=1)
-        self.bn_in = nn.BatchNorm2d(16)
+        
+        self.conv_in = nn.Conv2d(4, 32, kernel_size=3, padding=1, bias=False)
+        self.bn_in = nn.BatchNorm2d(32)
 
-        self.block1 = ResidualBlock(16)
+        # 4 residual stages
+        self.layer1 = BasicBlock(32, 32)
         self.pool1 = nn.MaxPool2d(2)
 
-        self.block2 = ResidualBlock(16)
+        self.layer2 = BasicBlock(32, 64, stride=1)
         self.pool2 = nn.MaxPool2d(2)
 
-        self.block3 = ResidualBlock(16)
+        self.layer3 = BasicBlock(64, 128, stride=1)
         self.pool3 = nn.MaxPool2d(2)
 
-        self.fc = nn.Linear(16 * 17 * 17, 5)  # adjust if input size changes
+        self.layer4 = BasicBlock(128, 256, stride=1)
+        self.pool4 = nn.MaxPool2d(2)
+        
+        # Bayesian head
+        self.fc = BayesianLinear(16 * 17 * 17, 5)
 
     def forward(self, x):
         x = torch.relu(self.bn_in(self.conv_in(x)))
-        x = self.pool1(self.block1(x))
-        x = self.pool2(self.block2(x))
-        x = self.pool3(self.block3(x))
+        x = self.pool1(self.layer1(x))
+        x = self.pool2(self.layer2(x))
+        x = self.pool3(self.layer3(x))
+        x = self.pool4(self.layer4(x))
         x = x.view(x.size(0), -1)
         return self.fc(x)
+
+
 
 
 # dimensions X = [2000, 4, 140, 140]
