@@ -231,11 +231,19 @@ class BayesianLinear(nn.Module):
 
         return weight, bias
 
-    def forward(self, x):
-        # Bayesian layer
-        w, b = self.sample_weights()
-        x = F.linear(x, w, b)
-        return x
+    def forward(self, x, sample=True):
+        if self.training or sample:
+            w, b = self.sample_weights()
+        else:
+            w, b = self.weight_mu, self.bias_mu
+        return F.linear(x, w, b)
+
+
+#     def forward(self, x):
+#         # Bayesian layer
+#         w, b = self.sample_weights()
+#         x = F.linear(x, w, b)
+#         return x
     
     def kl_divergence(self):
         weight_sigma = torch.log1p(torch.exp(self.weight_rho))
@@ -273,9 +281,10 @@ class BayesianResNetMini(nn.Module):
         self.dropout = nn.Dropout(p=0.2)
         
         # Bayesian head
+#         self.fc1 = nn.Linear(256 * 8 * 8, 512)
         self.fc1 = nn.Linear(256 * 8 * 8, 512)
-        self.fc2 = nn.Linear(512, 10)
-        self.fcb = BayesianLinear(10, 2 * 5)
+        self.fc2 = nn.Linear(512, 256)
+        self.fcb = BayesianLinear(256, 2 * 5)
         
     def forward_features(self, x):
         x = torch.relu(self.bn_in(self.conv_in(x)))
@@ -284,15 +293,16 @@ class BayesianResNetMini(nn.Module):
         x = self.pool3(self.layer3(x))
         x = self.pool4(self.layer4(x))
         x = x.view(x.size(0), -1)
-
+        return x
+    
+    def forward_head(self, x):
+        
         x = F.relu(self.fc1(x))
         x = self.dropout(x)
         x = F.relu(self.fc2(x))
         x = self.dropout(x)
-        return x
-    
-    def forward_head(self, x):
         out = self.fcb(x)
+        
         mu, log_var = out.chunk(2, dim=-1)
         sigma = torch.exp(0.5 * log_var)
 #         sigma = torch.sqrt(F.softplus(log_var) + 1e-6)
