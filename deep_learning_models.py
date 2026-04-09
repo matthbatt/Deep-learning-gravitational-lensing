@@ -6,7 +6,10 @@ from astropy.io import fits
 import numpy as np
 import random
 import os
-
+from torch.utils.data import random_split
+import torch
+from torchviz import make_dot
+from IPython.display import Image
 ################################################################# Load Dataset
 
 class LensDataset(Dataset):
@@ -33,6 +36,46 @@ class LensDataset(Dataset):
 
         return x, y
     
+    def split_data(self, training_pct, test_pct, batch_size):
+ 
+        n = len(self)
+        test_size = int(test_pct * n)
+        remaining_size = n - test_size
+
+        generator = torch.Generator().manual_seed(42)
+
+        remaining_dataset, test_dataset = random_split(
+            self,
+            [remaining_size, test_size],
+            generator=generator)
+
+        train_size = int(training_pct * n)
+        val_size = remaining_size - train_size
+
+        train_dataset, val_dataset = random_split(
+            remaining_dataset,
+            [train_size, val_size])
+     
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=3)
+        val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=3)
+        test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=3)
+        
+        return train_loader, val_loader, test_loader
+
+######################################################################################### View architechture
+
+class viewer():
+    def __init__(self, model):
+        self.model = model
+    
+    def show_model(self):
+        x = torch.randn(1, 4, 140, 140) 
+
+        y = self.model(x)
+
+        dot = make_dot(y, params=dict(self.model.named_parameters()))
+        dot.format = "png"
+        dot.render("resnetmini", directory=".", cleanup=True)
 
 ########################################################################################################## ResNet Mini
 import torch.nn as nn
@@ -116,6 +159,7 @@ class BasicBlock(nn.Module):
 class ResNetHoliSmokes(nn.Module):
     def __init__(self, num_outputs=5):
         super().__init__()
+        self.model_name = 'ResNetHoliSmokes'
 
         # Input: 4 channels (g,r,i,z)
         self.conv_in = nn.Conv2d(4, 32, kernel_size=3, padding=1, bias=False)
@@ -176,6 +220,8 @@ class BayesianLinear(nn.Module):
     def sample_weights(self):
         weight_sigma = torch.log1p(torch.exp(self.weight_rho))
         bias_sigma = torch.log1p(torch.exp(self.bias_rho))
+#         weight_sigma = F.softplus(self.weight_rho) + 1e-6
+#         bias_sigma = F.softplus(self.bias_rho) + 1e-6
 
         eps_w = torch.randn_like(weight_sigma)
         eps_b = torch.randn_like(bias_sigma)
@@ -186,13 +232,27 @@ class BayesianLinear(nn.Module):
         return weight, bias
 
     def forward(self, x):
-        weight, bias = self.sample_weights()
-        return F.linear(x, weight, bias)
+        # Bayesian layer
+        w, b = self.sample_weights()
+        x = F.linear(x, w, b)
+        return x
+    
+    def kl_divergence(self):
+        weight_sigma = torch.log1p(torch.exp(self.weight_rho))
+        bias_sigma = torch.log1p(torch.exp(self.bias_rho))
 
-   
+        kl_weight = (torch.log(1.0 / weight_sigma) + (weight_sigma**2 + self.weight_mu**2) / 2.0 - 0.5).sum()
+
+        kl_bias = (torch.log(1.0 / bias_sigma) + (bias_sigma**2 + self.bias_mu**2) / 2.0 - 0.5).sum()
+        
+        return kl_weight + kl_bias
+
+
+
 class BayesianResNetMini(nn.Module):
     def __init__(self):
         super().__init__()
+        self.model_name = 'BayesianResNetMini'
         
         self.conv_in = nn.Conv2d(4, 32, kernel_size=3, padding=1, bias=False)
         self.bn_in = nn.BatchNorm2d(32)
@@ -210,17 +270,40 @@ class BayesianResNetMini(nn.Module):
         self.layer4 = BasicBlock(128, 256, stride=1)
         self.pool4 = nn.MaxPool2d(2)
         
+        self.dropout = nn.Dropout(p=0.2)
+        
         # Bayesian head
-        self.fc = BayesianLinear(16 * 17 * 17, 5)
-
-    def forward(self, x):
+        self.fc1 = nn.Linear(256 * 8 * 8, 512)
+        self.fc2 = nn.Linear(512, 10)
+        self.fcb = BayesianLinear(10, 2 * 5)
+        
+    def forward_features(self, x):
         x = torch.relu(self.bn_in(self.conv_in(x)))
         x = self.pool1(self.layer1(x))
         x = self.pool2(self.layer2(x))
         x = self.pool3(self.layer3(x))
         x = self.pool4(self.layer4(x))
         x = x.view(x.size(0), -1)
-        return self.fc(x)
+
+        x = F.relu(self.fc1(x))
+        x = self.dropout(x)
+        x = F.relu(self.fc2(x))
+        x = self.dropout(x)
+        return x
+    
+    def forward_head(self, x):
+        out = self.fcb(x)
+        mu, log_var = out.chunk(2, dim=-1)
+        sigma = torch.exp(0.5 * log_var)
+#         sigma = torch.sqrt(F.softplus(log_var) + 1e-6)
+        return mu, sigma, log_var
+    
+    def forward(self, x):
+        features = self.forward_features(x)
+        return self.forward_head(features)
+    
+    def kl_divergence(self):
+        return self.fcb.kl_divergence()
 
 
 
