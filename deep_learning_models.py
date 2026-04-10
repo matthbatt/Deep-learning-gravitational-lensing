@@ -220,12 +220,13 @@ class BayesianLinear(nn.Module):
     def sample_weights(self):
         weight_sigma = torch.log1p(torch.exp(self.weight_rho))
         bias_sigma = torch.log1p(torch.exp(self.bias_rho))
-#         weight_sigma = F.softplus(self.weight_rho) + 1e-6
-#         bias_sigma = F.softplus(self.bias_rho) + 1e-6
 
         eps_w = torch.randn_like(weight_sigma)
         eps_b = torch.randn_like(bias_sigma)
-
+        
+#         print('shape mu : ', self.weight_mu.mean(dim = 1))
+#         print('shape sigma : ', weight_sigma.mean(dim = 1))
+        
         weight = self.weight_mu + weight_sigma * eps_w
         bias = self.bias_mu + bias_sigma * eps_b
 
@@ -281,10 +282,11 @@ class BayesianResNetMini(nn.Module):
         self.dropout = nn.Dropout(p=0.2)
         
         # Bayesian head
-#         self.fc1 = nn.Linear(256 * 8 * 8, 512)
-        self.fc1 = nn.Linear(256 * 8 * 8, 512)
-        self.fc2 = nn.Linear(512, 256)
-        self.fcb = BayesianLinear(256, 2 * 5)
+        self.fc1 = nn.Linear(256 * 8 * 8, 4096 ) #256 * 8 * 8/4
+        self.fc2 = nn.Linear(4096, 512)
+        self.fcb = BayesianLinear(512, 256)
+        self.fc3 = nn.Linear(256, 128)
+        self.fc4 = nn.Linear(128, 10)
         
     def forward_features(self, x):
         x = torch.relu(self.bn_in(self.conv_in(x)))
@@ -297,11 +299,15 @@ class BayesianResNetMini(nn.Module):
     
     def forward_head(self, x):
         
-        x = F.relu(self.fc1(x))
+        x = F.tanh(self.fc1(x))
         x = self.dropout(x)
-        x = F.relu(self.fc2(x))
+        x = F.tanh(self.fc2(x))
         x = self.dropout(x)
-        out = self.fcb(x)
+        x = F.tanh(self.fcb(x))
+        x = self.dropout(x)
+        x = F.tanh(self.fc3(x))
+        x = self.dropout(x)
+        out = self.fc4(x)
         
         mu, log_var = out.chunk(2, dim=-1)
         sigma = torch.exp(0.5 * log_var)
