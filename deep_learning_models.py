@@ -28,8 +28,9 @@ class LensDataset(Dataset):
 
         # load the tensor
         x = torch.load(tensor_path)
-        x = torch.clamp(x, min=0)
-        x = torch.sqrt(x)
+        x = torch.asinh(x)
+#         x = torch.clamp(x, min=0)
+#         x = torch.sqrt(x)
 
         # label
         y = torch.tensor(row.values, dtype=torch.float32)
