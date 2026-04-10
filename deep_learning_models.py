@@ -181,8 +181,14 @@ class ResNetHoliSmokes(nn.Module):
 
         # Regression head
         self.fc = nn.Sequential(
+            nn.Linear(256 * 8 * 8, 4096),
+            nn.Tanh(),
+            nn.Linear(4096, 512),
+            nn.Tanh(),
+            nn.Linear(512, 256),
+            nn.Tanh(),
             nn.Linear(256, 128),
-            nn.ReLU(),
+            nn.Tanh(),
             nn.Linear(128, num_outputs)
         )
 
@@ -193,9 +199,9 @@ class ResNetHoliSmokes(nn.Module):
         x = self.pool2(self.layer2(x))
         x = self.pool3(self.layer3(x))
         x = self.pool4(self.layer4(x))
-
+        x = x.view(x.size(0), -1)
         # Global average pooling
-        x = x.mean(dim=[2, 3])  # shape: [B, 256]
+#         x = x.mean(dim=[2, 3])  # shape: [B, 256]
 
         return self.fc(x)
    
@@ -283,7 +289,7 @@ class BayesianResNetMini(nn.Module):
         self.dropout = nn.Dropout(p=0.2)
         
         # Bayesian head
-        self.fc1 = nn.Linear(256 * 8 * 8, 4096 ) #256 * 8 * 8/4
+        self.fc1 = nn.Linear(256 * 8 * 8, 4096) #256 * 8 * 8/4
         self.fc2 = nn.Linear(4096, 512)
         self.fcb = BayesianLinear(512, 256)
         self.fc3 = nn.Linear(256, 128)
