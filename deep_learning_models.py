@@ -181,12 +181,6 @@ class ResNetHoliSmokes(nn.Module):
 
         # Regression head
         self.fc = nn.Sequential(
-            nn.Linear(256 * 8 * 8, 4096),
-            nn.Tanh(),
-            nn.Linear(4096, 512),
-            nn.Tanh(),
-            nn.Linear(512, 256),
-            nn.Tanh(),
             nn.Linear(256, 128),
             nn.Tanh(),
             nn.Linear(128, num_outputs)
@@ -199,9 +193,9 @@ class ResNetHoliSmokes(nn.Module):
         x = self.pool2(self.layer2(x))
         x = self.pool3(self.layer3(x))
         x = self.pool4(self.layer4(x))
-        x = x.view(x.size(0), -1)
+#         x = x.view(x.size(0), -1)
         # Global average pooling
-#         x = x.mean(dim=[2, 3])  # shape: [B, 256]
+        x = x.mean(dim=[2, 3])  # shape: [B, 256]
 
         return self.fc(x)
    
