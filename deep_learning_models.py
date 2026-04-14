@@ -300,13 +300,13 @@ class BayesianResNetMini(nn.Module):
     
     def forward_head(self, x):
         
-        x = F.tanh(self.fc1(x))
+        x = F.relu(self.fc1(x))
         x = self.dropout(x)
-        x = F.tanh(self.fc2(x))
+        x = F.relu(self.fc2(x))
         x = self.dropout(x)
-        x = F.tanh(self.fcb(x))
+        x = F.relu(self.fcb(x))
         x = self.dropout(x)
-        x = F.tanh(self.fc3(x))
+        x = F.relu(self.fc3(x))
         x = self.dropout(x)
         out = self.fc4(x)
         
