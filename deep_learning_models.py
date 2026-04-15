@@ -28,6 +28,7 @@ class LensDataset(Dataset):
 
         # load the tensor
         x = torch.load(tensor_path)
+        x = x[::2] 
         x = torch.asinh(x)
 #         x = torch.clamp(x, min=0)
 #         x = torch.sqrt(x)
@@ -36,6 +37,58 @@ class LensDataset(Dataset):
         y = torch.tensor(row.values, dtype=torch.float32)
 
         return x, y
+    
+    def split_data(self, training_pct, test_pct, batch_size):
+ 
+        n = len(self)
+        test_size = int(test_pct * n)
+        remaining_size = n - test_size
+
+        generator = torch.Generator().manual_seed(42)
+
+        remaining_dataset, test_dataset = random_split(
+            self,
+            [remaining_size, test_size],
+            generator=generator)
+
+        train_size = int(training_pct * n)
+        val_size = remaining_size - train_size
+
+        train_dataset, val_dataset = random_split(
+            remaining_dataset,
+            [train_size, val_size])
+     
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=3)
+        val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=3)
+        test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=3)
+        
+        return train_loader, val_loader, test_loader
+    
+    
+class LensDataset_UNet(Dataset):
+    def __init__(self, df, path_tensor_folder):
+        self.df = df
+        self.path = path_tensor_folder
+
+    def __len__(self):
+        return len(self.df)
+
+    def __getitem__(self, idx):
+        row = self.df.iloc[idx]
+
+        # filename stored in df, e.g. "sample_0001.pt"
+        tensor_path = os.path.join(self.path, row.name.split('/')[1] + '.pt')
+
+        # load the tensor
+        x = torch.load(tensor_path)
+        x = torch.asinh(x)
+#         x = torch.clamp(x, min=0)
+#         x = torch.sqrt(x)
+
+        # label
+        y = torch.tensor(row.values, dtype=torch.float32)
+
+        return (x[::2], x[1::2]), y # x[::2] are the 4 bands g-r-i-z for the lens + source, x[1::2] are the 4 bands with the lens only.
     
     def split_data(self, training_pct, test_pct, batch_size):
  
@@ -321,7 +374,114 @@ class BayesianResNetMini(nn.Module):
     
     def kl_divergence(self):
         return self.fcb.kl_divergence()
+    
+    
+############################################################################################################"""" U - NET
 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+
+class DoubleConv(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+
+            nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
+
+class Down(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.MaxPool2d(2),
+            DoubleConv(in_channels, out_channels)
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
+
+class Up(nn.Module):
+    def __init__(self, in_channels, out_channels, bilinear=True):
+        super().__init__()
+        if bilinear:
+            self.up = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
+            self.conv = DoubleConv(in_channels, out_channels)
+        else:
+            self.up = nn.ConvTranspose2d(in_channels // 2, in_channels // 2,
+                                         kernel_size=2, stride=2)
+            self.conv = DoubleConv(in_channels, out_channels)
+
+        self.bilinear = bilinear
+
+    def forward(self, x1, x2):
+        x1 = self.up(x1)
+
+        # pad if needed (in case of odd sizes)
+        diff_y = x2.size(2) - x1.size(2)
+        diff_x = x2.size(3) - x1.size(3)
+        x1 = F.pad(x1, [diff_x // 2, diff_x - diff_x // 2,
+                        diff_y // 2, diff_y - diff_y // 2])
+
+        x = torch.cat([x2, x1], dim=1)
+        return self.conv(x)
+
+
+class OutConv(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super().__init__()
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=1)
+
+    def forward(self, x):
+        return self.conv(x)
+
+
+class UNet(nn.Module):
+    def __init__(self,
+                 in_channels=4,
+                 out_channels=4,
+                 base_channels=64,
+                 bilinear=True):
+        super().__init__()
+        self.model_name = "UNet"
+
+        self.inc = DoubleConv(in_channels, base_channels)
+        self.down1 = Down(base_channels, base_channels * 2)
+        self.down2 = Down(base_channels * 2, base_channels * 4)
+        self.down3 = Down(base_channels * 4, base_channels * 8)
+        factor = 2 if bilinear else 1
+        self.down4 = Down(base_channels * 8, base_channels * 16 // factor)
+
+        self.up1 = Up(base_channels * 16, base_channels * 8 // factor, bilinear)
+        self.up2 = Up(base_channels * 8, base_channels * 4 // factor, bilinear)
+        self.up3 = Up(base_channels * 4, base_channels * 2 // factor, bilinear)
+        self.up4 = Up(base_channels * 2, base_channels, bilinear)
+        self.outc = OutConv(base_channels, out_channels)
+
+    def forward(self, x):
+        x1 = self.inc(x)
+        x2 = self.down1(x1)
+        x3 = self.down2(x2)
+        x4 = self.down3(x3)
+        x5 = self.down4(x4)
+
+        x = self.up1(x5, x4)
+        x = self.up2(x, x3)
+        x = self.up3(x, x2)
+        x = self.up4(x, x1)
+        logits = self.outc(x)
+        return logits
 
 
 
