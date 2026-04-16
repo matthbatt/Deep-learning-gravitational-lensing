@@ -469,13 +469,16 @@ class UNet(nn.Module):
         self.up4 = Up(base_channels * 2, base_channels, bilinear)
         self.outc = OutConv(base_channels, out_channels)
 
-    def forward(self, x):
+    def forward(self, x, return_latent=False):
         x1 = self.inc(x)
         x2 = self.down1(x1)
         x3 = self.down2(x2)
         x4 = self.down3(x3)
         x5 = self.down4(x4)
-
+        
+        if return_latent:
+            return x5
+        
         x = self.up1(x5, x4)
         x = self.up2(x, x3)
         x = self.up3(x, x2)
@@ -484,6 +487,68 @@ class UNet(nn.Module):
         return logits
 
 
+
+################################################################## U net then Resnet
+    
+    
+class UNetThenResNet(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.model_name = "UNetThenResNet"
+        self.unet = UNet()                     # first stage
+        self.resnet = ResNetHoliSmokes()       # second stage
+
+    def forward(self, x):
+        features = self.forward_unet(x)
+        return self.forward_resnet(features)
+    
+    def forward_unet(self, x):
+        return self.unet(x) 
+    
+    def forward_resnet(self, x):
+        return self.resnet(x)
+    
+    
+    
+######################################################################## UNet then NN
+class LatentNN(nn.Module):
+    def __init__(self, output_dim=5):
+        super().__init__()
+        self.model_name = "LatentNN"
+
+        self.flatten = nn.Flatten()
+
+        self.net = nn.Sequential(
+            nn.Linear(512 * 8 * 8, 2048),
+            nn.ReLU(),
+            nn.Linear(2048, 512),
+            nn.ReLU(),
+            nn.Linear(512, output_dim)   # final output
+        )
+
+    def forward(self, x):
+        x = self.flatten(x)
+        return self.net(x)
+
+    
+class UNetThenNN(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.model_name = "UNetThenNN"
+        self.unet = UNet()                     # first stage
+        self.latentNN = LatentNN()       # second stage
+
+    def forward(self, x):
+        latent = self.unet(x, return_latent=True)  # (B, 512, 8, 8)
+        out = self.latentNN(latent)
+        return out
+    
+    def forward_unet(self, x, return_latent=False):
+        return self.unet(x, return_latent) 
+    
+    def forward_latentNN(self, x):
+        return self.latentNN(x)
+    
 
 # dimensions X = [2000, 4, 140, 140]
 # then [2000, 8, 140, 140] because padding of 1, and 8 filters of size 3x3

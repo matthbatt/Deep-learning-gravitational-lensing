@@ -246,3 +246,195 @@ class Trainer(nn.Module):
             "train_losses": self.train_losses,
             "val_losses": self.val_losses,
         }, f"{model.model_name}.pth")
+        
+ 
+
+
+
+####################################################################### Training for U Net then Resnet
+
+    def run_unet(self, epochs, training_set, validation_set, **kwargs):
+        
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model = self.model.to(device)
+
+        optimizer = torch.optim.AdamW(model.parameters(), lr=self.learning_rate, weight_decay=1e-3)
+        scheduler = torch.optim.lr_scheduler.StepLR(
+            optimizer, step_size=10, gamma=self.scheduler_coef
+        )
+
+        for epoch in range(epochs):
+            # ---- TRAIN ----
+            self.model.train()
+            epoch_loss = 0.0
+
+            for xb, yb in training_set:
+                
+                xb, xout = xb[0].to(device), xb[1].to(device)
+                yb = yb.to(device)
+                
+                optimizer.zero_grad()
+
+                # ---- Forward pass ----
+                out_lens = model.forward_unet(xb)
+                outputs = model.forward_resnet(out_lens)
+                
+                loss1 = F.mse_loss(out_lens, xout)
+                loss2 = F.mse_loss(outputs, yb)
+                loss = loss1 + loss2
+                
+                # ---- Backprop ----
+                loss.backward()
+                optimizer.step()
+                epoch_loss += loss.item()
+
+            # ---- Logging ----
+            epoch_loss /= len(training_set)
+            self.train_losses.append(epoch_loss)
+            
+            
+            # ---- VALIDATION ----
+            model.eval()
+            val_loss = 0.0
+
+            with torch.no_grad():
+                for xb, yb in validation_set:
+
+                    xb, xout = xb[0].to(device), xb[1].to(device)
+                    yb = yb.to(device)
+
+                    out_lens = model.forward_unet(xb)
+                    outputs = model.forward_resnet(out_lens)
+
+                    loss1 = F.mse_loss(out_lens, xout)
+                    loss2 = F.mse_loss(outputs, yb)
+                    loss = loss1 + loss2
+                    
+                    val_loss += loss.item()
+
+                self.val_losses.append(val_loss / len(validation_set))
+
+            scheduler.step()
+
+            # ---- Save best model ----
+            if val_loss < self.best_val_loss:
+                self.best_val_loss = val_loss
+                self.best_weights = self.model.state_dict()
+                self.early_stop_counter = 0
+            else:
+                self.early_stop_counter += 1
+
+            print(f"Epoch {epoch+1}: train={self.train_losses[-1]:.4f}, val={self.val_losses[-1]:.4f}")
+
+            # ---- EARLY STOPPING ----
+            if self.early_stop_counter >= self.patience:
+                print(f"Early stopping triggered at epoch {epoch+1}")
+                break
+                
+                
+        # ---- Save model ----
+        torch.save({
+            "model": self.best_weights,
+            "optimizer": optimizer.state_dict(),
+            "epoch": epoch,
+            "train_losses": self.train_losses,
+            "val_losses": self.val_losses,
+        }, f"{model.model_name}.pth")
+
+        
+        
+        
+        
+        
+        
+###############################################################U Net and Classical NN
+
+    def run_unet_NN(self, epochs, training_set, validation_set, **kwargs):
+        
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        model = self.model.to(device)
+
+        optimizer = torch.optim.AdamW(model.parameters(), lr=self.learning_rate, weight_decay=1e-3)
+        scheduler = torch.optim.lr_scheduler.StepLR(
+            optimizer, step_size=10, gamma=self.scheduler_coef
+        )
+
+        for epoch in range(epochs):
+            # ---- TRAIN ----
+            self.model.train()
+            epoch_loss = 0.0
+
+            for xb, yb in training_set:
+                
+                xb, xout = xb[0].to(device), xb[1].to(device)
+                yb = yb.to(device)
+                
+                optimizer.zero_grad()
+
+                # ---- Forward pass ----
+                out_lens = model.forward_unet(xb)
+                x_latent = model.forward_unet(xb, return_latent=True)
+                outputs = model.forward_latentNN(x_latent)
+                
+                loss1 = F.mse_loss(out_lens, xout)
+                loss2 = F.mse_loss(outputs, yb)
+                loss = loss1 + loss2
+                
+                # ---- Backprop ----
+                loss.backward()
+                optimizer.step()
+                epoch_loss += loss.item()
+
+            # ---- Logging ----
+            epoch_loss /= len(training_set)
+            self.train_losses.append(epoch_loss)
+            
+            
+            # ---- VALIDATION ----
+            model.eval()
+            val_loss = 0.0
+
+            with torch.no_grad():
+                for xb, yb in validation_set:
+
+                    xb, xout = xb[0].to(device), xb[1].to(device)
+                    yb = yb.to(device)
+
+                    out_lens = model.forward_unet(xb)
+                    x_latent = model.forward_unet(xb, return_latent=True)
+                    outputs = model.forward_latentNN(x_latent)
+
+                    loss1 = F.mse_loss(out_lens, xout)
+                    loss2 = F.mse_loss(outputs, yb)
+                    loss = loss1 + loss2
+                    
+                    val_loss += loss.item()
+
+                self.val_losses.append(val_loss / len(validation_set))
+
+            scheduler.step()
+
+            # ---- Save best model ----
+            if val_loss < self.best_val_loss:
+                self.best_val_loss = val_loss
+                self.best_weights = self.model.state_dict()
+                self.early_stop_counter = 0
+            else:
+                self.early_stop_counter += 1
+
+            print(f"Epoch {epoch+1}: train={self.train_losses[-1]:.4f}, val={self.val_losses[-1]:.4f}")
+
+            # ---- EARLY STOPPING ----
+            if self.early_stop_counter >= self.patience:
+                print(f"Early stopping triggered at epoch {epoch+1}")
+                break
+                
+                
+        # ---- Save model ----
+        torch.save({
+            "model": self.best_weights,
+            "optimizer": optimizer.state_dict(),
+            "epoch": epoch,
+            "train_losses": self.train_losses,
+            "val_losses": self.val_losses,
+        }, f"{model.model_name}.pth")
