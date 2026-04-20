@@ -253,12 +253,12 @@ class Trainer(nn.Module):
 
 ####################################################################### Training for U Net then Resnet
 
-    def run_unet(self, epochs, training_set, validation_set, **kwargs):
+    def run_unet_resnet(self, epochs, training_set, validation_set, **kwargs):
         
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model = self.model.to(device)
 
-        optimizer = torch.optim.AdamW(model.parameters(), lr=self.learning_rate, weight_decay=1e-3)
+        optimizer = torch.optim.AdamW(model.parameters(), lr=self.learning_rate, weight_decay=1e-2)
         scheduler = torch.optim.lr_scheduler.StepLR(
             optimizer, step_size=10, gamma=self.scheduler_coef
         )
@@ -281,7 +281,7 @@ class Trainer(nn.Module):
                 
                 loss1 = F.mse_loss(out_lens, xout)
                 loss2 = F.mse_loss(outputs, yb)
-                loss = loss1 + loss2
+                loss = 0.1 * loss1 + loss2
                 
                 # ---- Backprop ----
                 loss.backward()
@@ -308,7 +308,7 @@ class Trainer(nn.Module):
 
                     loss1 = F.mse_loss(out_lens, xout)
                     loss2 = F.mse_loss(outputs, yb)
-                    loss = loss1 + loss2
+                    loss = 0.1 * loss1 + loss2
                     
                     val_loss += loss.item()
 
@@ -339,7 +339,7 @@ class Trainer(nn.Module):
             "epoch": epoch,
             "train_losses": self.train_losses,
             "val_losses": self.val_losses,
-        }, f"{model.model_name}.pth")
+        }, f"{model.model_name}_2.pth")
 
         
         
