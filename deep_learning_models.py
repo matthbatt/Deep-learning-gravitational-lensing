@@ -28,10 +28,10 @@ class LensDataset(Dataset):
 
         # load the tensor
         x = torch.load(tensor_path)
-        mean = x.mean()
-        std = x.std()
         x = x[::2] 
-        x = torch.asinh((x-mean)/std)
+#         mean = x.mean(dim=(1,2), keepdim=True)   
+#         std = x.std(dim=(1,2), keepdim=True)
+#         x = torch.asinh((x-mean)/std)
 #         x = torch.clamp(x, min=0)
 #         x = torch.sqrt(x)
 
@@ -234,24 +234,6 @@ class ResNetHoliSmokes(nn.Module):
         self.layer4 = BasicBlock(128, 256, stride=1)
         self.pool4 = nn.MaxPool2d(2)
         
-#         self.fc = nn.Sequential(
-#             nn.Linear(256 * 8 * 8, 4096),
-#             nn.Tanh(),
-#             nn.Linear(4096, 512),
-#             nn.Tanh(),
-#             nn.Linear(512, 256),
-#             nn.Tanh(),
-#             nn.Linear(256, 128),
-#             nn.Tanh(),
-#             nn.Linear(128, num_outputs)
-#         )
-
-#         # Regression head
-#         self.fc = nn.Sequential(
-#             nn.Linear(256, 128),
-#             nn.ReLU(),
-#             nn.Linear(128, num_outputs)
-#         )
         # Regression head
         self.fc = nn.Sequential(
             nn.Linear(256, 128),
