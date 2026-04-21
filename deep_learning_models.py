@@ -31,9 +31,9 @@ class LensDataset(Dataset):
         x = x[::2] 
 #         mean = x.mean(dim=(1,2), keepdim=True)   
 #         std = x.std(dim=(1,2), keepdim=True)
-#         x = torch.asinh((x-mean)/std)
-#         x = torch.clamp(x, min=0)
-#         x = torch.sqrt(x)
+# #         x = torch.asinh((x-mean)/std)
+        x = torch.clamp(x, min=0)
+        x = torch.sqrt(x)
 
         # label
         y = torch.tensor(row.values, dtype=torch.float32)
@@ -237,7 +237,7 @@ class ResNetHoliSmokes(nn.Module):
         # Regression head
         self.fc = nn.Sequential(
             nn.Linear(256, 128),
-            nn.Tanh(),
+            nn.ReLU(),
             nn.Linear(128, num_outputs)
         )
 
