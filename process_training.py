@@ -173,9 +173,9 @@ class Trainer(nn.Module):
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model = self.model.to(device)
 
-        optimizer = torch.optim.AdamW(model.parameters(), lr=self.learning_rate, weight_decay=1e-3)
+        optimizer = torch.optim.AdamW(model.parameters(), lr=self.learning_rate) #, weight_decay=1e-3)
         scheduler = torch.optim.lr_scheduler.StepLR(
-            optimizer, step_size=10, gamma=self.scheduler_coef
+            optimizer, step_size=4, gamma=self.scheduler_coef
         )
 
         for epoch in range(epochs):
@@ -245,7 +245,7 @@ class Trainer(nn.Module):
             "epoch": epoch,
             "train_losses": self.train_losses,
             "val_losses": self.val_losses,
-        }, f"{model.model_name}.pth")
+        }, f"{model.model_name}_2.pth")
         
  
 

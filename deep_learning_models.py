@@ -81,9 +81,9 @@ class LensDataset_UNet(Dataset):
 
         # load the tensor
         x = torch.load(tensor_path)
-        x = torch.asinh(x)
-#         x = torch.clamp(x, min=0)
-#         x = torch.sqrt(x)
+#         x = torch.asinh(x)
+        x = torch.clamp(x, min=0)
+        x = torch.sqrt(x)
 
         # label
         y = torch.tensor(row.values, dtype=torch.float32)
@@ -229,13 +229,11 @@ class ResNetHoliSmokes(nn.Module):
         self.layer3 = BasicBlock(64, 128, stride=1)
         self.pool3 = nn.MaxPool2d(2)
 
-        self.layer4 = BasicBlock(128, 256, stride=1)
-        self.pool4 = nn.MaxPool2d(2)
+#         self.layer4 = BasicBlock(128, 256, stride=1)
+#         self.pool4 = nn.MaxPool2d(2)
         
         # Regression head
         self.fc = nn.Sequential(
-            nn.Linear(256, 128),
-            nn.ReLU(),
             nn.Linear(128,64),
             nn.ReLU(),
             nn.Linear(64, num_outputs)
@@ -247,7 +245,7 @@ class ResNetHoliSmokes(nn.Module):
         x = self.pool1(self.layer1(x))
         x = self.pool2(self.layer2(x))
         x = self.pool3(self.layer3(x))
-        x = self.pool4(self.layer4(x))
+#         x = self.pool4(self.layer4(x))
 #         x = x.view(x.size(0), -1)
         # Global average pooling
         x = x.mean(dim=[2, 3])  # shape: [B, 256]
@@ -338,7 +336,7 @@ class BayesianResNetMini(nn.Module):
         self.dropout = nn.Dropout(p=0.2)
         
         # Bayesian head
-        self.fc1 = nn.Linear(256 * 8 * 8, 4096) #256 * 8 * 8/4
+        self.fc1 = nn.Linear(256 * 8 * 8, 4096) # 256 * 8 * 8/4
         self.fc2 = nn.Linear(4096, 512)
         self.fcb = BayesianLinear(512, 256)
         self.fc3 = nn.Linear(256, 128)
@@ -461,11 +459,11 @@ class UNet(nn.Module):
         self.inc = DoubleConv(in_channels, base_channels)
         self.down1 = Down(base_channels, base_channels * 2)
         self.down2 = Down(base_channels * 2, base_channels * 4)
-        self.down3 = Down(base_channels * 4, base_channels * 8)
         factor = 2 if bilinear else 1
-        self.down4 = Down(base_channels * 8, base_channels * 16 // factor)
+        self.down3 = Down(base_channels * 4, base_channels * 8// factor)
+#         self.down4 = Down(base_channels * 8, base_channels * 16 // factor)
 
-        self.up1 = Up(base_channels * 16, base_channels * 8 // factor, bilinear)
+#         self.up1 = Up(base_channels * 16, base_channels * 8 // factor, bilinear)
         self.up2 = Up(base_channels * 8, base_channels * 4 // factor, bilinear)
         self.up3 = Up(base_channels * 4, base_channels * 2 // factor, bilinear)
         self.up4 = Up(base_channels * 2, base_channels, bilinear)
@@ -476,13 +474,13 @@ class UNet(nn.Module):
         x2 = self.down1(x1)
         x3 = self.down2(x2)
         x4 = self.down3(x3)
-        x5 = self.down4(x4)
+#         x5 = self.down4(x4)
         
         if return_latent:
-            return x5
+            return x4
         
-        x = self.up1(x5, x4)
-        x = self.up2(x, x3)
+#         x = self.up1(x5, x4)
+        x = self.up2(x4, x3)
         x = self.up3(x, x2)
         x = self.up4(x, x1)
         logits = self.outc(x)
