@@ -25,21 +25,14 @@ class LensDataset(Dataset):
 
         # filename stored in df, e.g. "sample_0001.pt"
         tensor_path = os.path.join(self.path, row.name.split('/')[1] + '.pt')
-
-        # Compute per‑sample min/max while keeping dimensions
-        x_min = x.amin(dim=(1, 2), keepdim=True)
-        x_max = x.amax(dim=(1, 2), keepdim=True)
-
-        # Normalize
-        x = (x - x_min) / (x_max - x_min + 1e-12)
+        
+        x = torch.load(tensor_path)
+        x = x[::2]
 
         # Clamp and transform
         x = torch.clamp(x, min=0)
         x = torch.sqrt(x)
-        
-        # Min–max normalization
-
-        
+  
         # label
         y = torch.tensor(row.values, dtype=torch.float32)
 
@@ -243,7 +236,9 @@ class ResNetHoliSmokes(nn.Module):
         self.fc = nn.Sequential(
             nn.Linear(256, 128),
             nn.ReLU(),
-            nn.Linear(128, num_outputs)
+            nn.Linear(128,64),
+            nn.ReLU(),
+            nn.Linear(64, num_outputs)
         )
 
     def forward(self, x):
