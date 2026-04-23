@@ -27,7 +27,7 @@ class LensDataset(Dataset):
         tensor_path = os.path.join(self.path, row.name.split('/')[1] + '.pt')
         
         x = torch.load(tensor_path)
-        x = x[::2]
+        x = x[1::2]
 
         # Clamp and transform
         x = torch.clamp(x, min=0)
@@ -229,14 +229,14 @@ class ResNetHoliSmokes(nn.Module):
         self.layer3 = BasicBlock(64, 128, stride=1)
         self.pool3 = nn.MaxPool2d(2)
 
-#         self.layer4 = BasicBlock(128, 256, stride=1)
-#         self.pool4 = nn.MaxPool2d(2)
+        self.layer4 = BasicBlock(128, 256, stride=1)
+        self.pool4 = nn.MaxPool2d(2)
         
         # Regression head
         self.fc = nn.Sequential(
-            nn.Linear(128,64),
+            nn.Linear(256,128),
             nn.ReLU(),
-            nn.Linear(64, num_outputs)
+            nn.Linear(128, num_outputs)
         )
 
     def forward(self, x):
@@ -245,7 +245,7 @@ class ResNetHoliSmokes(nn.Module):
         x = self.pool1(self.layer1(x))
         x = self.pool2(self.layer2(x))
         x = self.pool3(self.layer3(x))
-#         x = self.pool4(self.layer4(x))
+        x = self.pool4(self.layer4(x))
 #         x = x.view(x.size(0), -1)
         # Global average pooling
         x = x.mean(dim=[2, 3])  # shape: [B, 256]
