@@ -236,7 +236,11 @@ class ResNetHoliSmokes(nn.Module):
         self.fc = nn.Sequential(
             nn.Linear(256,128),
             nn.ReLU(),
-            nn.Linear(128, num_outputs)
+            nn.Dropout(p=0.2),
+            nn.Linear(128,64),
+            nn.ReLU(),
+            nn.Dropout(p=0.2),
+            nn.Linear(64, num_outputs)
         )
 
     def forward(self, x):
@@ -249,7 +253,6 @@ class ResNetHoliSmokes(nn.Module):
 #         x = x.view(x.size(0), -1)
         # Global average pooling
         x = x.mean(dim=[2, 3])  # shape: [B, 256]
-
         return self.fc(x)
    
 
@@ -475,7 +478,7 @@ class UNet(nn.Module):
         x3 = self.down2(x2)
         x4 = self.down3(x3)
 #         x5 = self.down4(x4)
-        
+        print(x4.shape)
         if return_latent:
             return x4
         
