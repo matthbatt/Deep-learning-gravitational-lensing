@@ -474,15 +474,17 @@ class UNet(nn.Module):
         x3 = self.down2(x2)
         x4 = self.down3(x3)
 #         x5 = self.down4(x4)
-        if return_latent:
-            return x4
         
 #         x = self.up1(x5, x4)
         x = self.up2(x4, x3)
         x = self.up3(x, x2)
         x = self.up4(x, x1)
         logits = self.outc(x)
-        return logits
+        
+        if return_latent:
+            return logits, x4
+        else:
+            return logits
 
 
 
@@ -517,11 +519,12 @@ class LatentNN(nn.Module):
         self.flatten = nn.Flatten()
 
         self.net = nn.Sequential(
-            nn.Linear(512 * 8 * 8, 2048),
+#             nn.Linear(512 * 8 * 8, 2048),
+            nn.Linear(256 * 17 * 17, 1024),
             nn.ReLU(),
-            nn.Linear(2048, 512),
+            nn.Linear(1024, 256),
             nn.ReLU(),
-            nn.Linear(512, output_dim)   # final output
+            nn.Linear(256, output_dim)   # final output
         )
 
     def forward(self, x):
@@ -537,7 +540,7 @@ class UNetThenNN(nn.Module):
         self.latentNN = LatentNN()       # second stage
 
     def forward(self, x):
-        latent = self.unet(x, return_latent=True)  # (B, 512, 8, 8)
+        _, latent = self.unet(x, return_latent=True)  # (B, 512, 8, 8) (B, 256, 17, 17)
         out = self.latentNN(latent)
         return out
     

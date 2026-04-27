@@ -17,7 +17,7 @@ class Trainer(nn.Module):
         self.all_means = []
         self.all_stds = []
         self.all_targets = []
-        self.patience = 10          # or pass as argument
+        self.patience = 20         # or pass as argument
         self.early_stop_counter = 0
         self.all_means = []
         self.all_epistemic = []
@@ -344,7 +344,7 @@ class Trainer(nn.Module):
             "epoch": epoch,
             "train_losses": self.train_losses,
             "val_losses": self.val_losses,
-        }, f"{model.model_name}_5.pth")
+        }, f"{model.model_name}_6.pth")
 
         
         
@@ -358,11 +358,16 @@ class Trainer(nn.Module):
         
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model = self.model.to(device)
+        
+        optimizer = torch.optim.AdamW(model.parameters(), lr=self.learning_rate, weight_decay=1e-4)
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer,
+            T_max=50)
 
-        optimizer = torch.optim.AdamW(model.parameters(), lr=self.learning_rate, weight_decay=1e-3)
-        scheduler = torch.optim.lr_scheduler.StepLR(
-            optimizer, step_size=10, gamma=self.scheduler_coef
-        )
+#         optimizer = torch.optim.AdamW(model.parameters(), lr=self.learning_rate, weight_decay=1e-3)
+#         scheduler = torch.optim.lr_scheduler.StepLR(
+#             optimizer, step_size=10, gamma=self.scheduler_coef
+#         )
 
         for epoch in range(epochs):
             # ---- TRAIN ----
@@ -377,8 +382,7 @@ class Trainer(nn.Module):
                 optimizer.zero_grad()
 
                 # ---- Forward pass ----
-                out_lens = model.forward_unet(xb)
-                x_latent = model.forward_unet(xb, return_latent=True)
+                out_lens, x_latent = model.forward_unet(xb, return_latent=True)
                 outputs = model.forward_latentNN(x_latent)
                 
                 loss1 = F.mse_loss(out_lens, xout)
@@ -405,8 +409,7 @@ class Trainer(nn.Module):
                     xb, xout = xb[0].to(device), xb[1].to(device)
                     yb = yb.to(device)
 
-                    out_lens = model.forward_unet(xb)
-                    x_latent = model.forward_unet(xb, return_latent=True)
+                    out_lens, x_latent = model.forward_unet(xb, return_latent=True)
                     outputs = model.forward_latentNN(x_latent)
 
                     loss1 = F.mse_loss(out_lens, xout)
@@ -442,4 +445,4 @@ class Trainer(nn.Module):
             "epoch": epoch,
             "train_losses": self.train_losses,
             "val_losses": self.val_losses,
-        }, f"{model.model_name}.pth")
+        }, f"{model.model_name}_2.pth")
