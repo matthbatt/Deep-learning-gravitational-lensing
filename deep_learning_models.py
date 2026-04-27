@@ -27,7 +27,7 @@ class LensDataset(Dataset):
         tensor_path = os.path.join(self.path, row.name.split('/')[1] + '.pt')
         
         x = torch.load(tensor_path)
-        x = x[1::2]
+        x = x[::2]
 
         # Clamp and transform
         x = torch.clamp(x, min=0)
@@ -236,11 +236,7 @@ class ResNetHoliSmokes(nn.Module):
         self.fc = nn.Sequential(
             nn.Linear(256,128),
             nn.ReLU(),
-            nn.Dropout(p=0.2),
-            nn.Linear(128,64),
-            nn.ReLU(),
-            nn.Dropout(p=0.2),
-            nn.Linear(64, num_outputs)
+            nn.Linear(128, num_outputs)
         )
 
     def forward(self, x):
@@ -478,7 +474,6 @@ class UNet(nn.Module):
         x3 = self.down2(x2)
         x4 = self.down3(x3)
 #         x5 = self.down4(x4)
-        print(x4.shape)
         if return_latent:
             return x4
         
