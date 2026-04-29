@@ -520,14 +520,13 @@ class LatentNN(nn.Module):
 
         self.net = nn.Sequential(
 #             nn.Linear(512 * 8 * 8, 2048),
-            nn.Linear(256 * 17 * 17, 1024),
+            nn.Linear(256, 128),
             nn.ReLU(),
-            nn.Linear(1024, 256),
-            nn.ReLU(),
-            nn.Linear(256, output_dim)   # final output
+            nn.Linear(128, output_dim)   # final output
         )
 
     def forward(self, x):
+        x = x.mean(dim=[2, 3]) 
         x = self.flatten(x)
         return self.net(x)
 

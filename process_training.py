@@ -445,4 +445,4 @@ class Trainer(nn.Module):
             "epoch": epoch,
             "train_losses": self.train_losses,
             "val_losses": self.val_losses,
-        }, f"{model.model_name}_2.pth")
+        }, f"{model.model_name}_4.pth")
