@@ -282,7 +282,8 @@ class Trainer(nn.Module):
 
                 # ---- Forward pass ----
                 out_lens = model.forward_unet(xb)
-                outputs = model.forward_resnet(out_lens)
+                out_lens_b = torch.cat([out_lens, xb - out_lens], dim=1)
+                outputs = model.forward_resnet(out_lens_b)
                 
                 loss1 = F.mse_loss(out_lens, xout)
                 loss2 = F.mse_loss(outputs, yb)
@@ -307,9 +308,11 @@ class Trainer(nn.Module):
 
                     xb, xout = xb[0].to(device), xb[1].to(device)
                     yb = yb.to(device)
-
+                    
+                    # ---- Forward pass ----
                     out_lens = model.forward_unet(xb)
-                    outputs = model.forward_resnet(out_lens)
+                    out_lens_b = torch.cat([out_lens, xb - out_lens], dim=1)
+                    outputs = model.forward_resnet(out_lens_b)
 
                     loss1 = F.mse_loss(out_lens, xout)
                     loss2 = F.mse_loss(outputs, yb)
@@ -344,7 +347,7 @@ class Trainer(nn.Module):
             "epoch": epoch,
             "train_losses": self.train_losses,
             "val_losses": self.val_losses,
-        }, f"{model.model_name}_6.pth")
+        }, f"{model.model_name}_7.pth")
 
         
         
