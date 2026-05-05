@@ -266,7 +266,7 @@ class Trainer(nn.Module):
         optimizer = torch.optim.AdamW(model.parameters(), lr=self.learning_rate, weight_decay=1e-4)
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             optimizer,
-            T_max=50)
+            T_max=100)
 
         for epoch in range(epochs):
             # ---- TRAIN ----
@@ -347,7 +347,7 @@ class Trainer(nn.Module):
             "epoch": epoch,
             "train_losses": self.train_losses,
             "val_losses": self.val_losses,
-        }, f"{model.model_name}_7.pth")
+        }, f"{model.model_name}_8.pth")
 
         
         
