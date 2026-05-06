@@ -123,7 +123,7 @@ class viewer():
         self.model = model
     
     def show_model(self):
-        x = torch.randn(1, 8, 140, 140) 
+        x = torch.randn(1, 4, 140, 140) 
 
         y = self.model(x)
 
@@ -216,7 +216,7 @@ class ResNetHoliSmokes(nn.Module):
         self.model_name = 'ResNetHoliSmokes'
 
         # Input: 4 channels (g,r,i,z)
-        self.conv_in = nn.Conv2d(8, 32, kernel_size=3, padding=1, bias=False)
+        self.conv_in = nn.Conv2d(4, 32, kernel_size=3, padding=1, bias=False)
         self.bn_in = nn.BatchNorm2d(32)
 
         # 4 residual stages

@@ -282,12 +282,12 @@ class Trainer(nn.Module):
 
                 # ---- Forward pass ----
                 out_lens = model.forward_unet(xb)
-                out_lens_b = torch.cat([out_lens, xb - out_lens], dim=1)
-                outputs = model.forward_resnet(out_lens_b)
+#                 out_lens = torch.cat([out_lens, xb - out_lens], dim=1)
+                outputs = model.forward_resnet(out_lens)
                 
                 loss1 = F.mse_loss(out_lens, xout)
                 loss2 = F.mse_loss(outputs, yb)
-                loss = loss1 + loss2
+                loss = 0.1 * loss1 + loss2
                 
                 # ---- Backprop ----
                 loss.backward()
@@ -311,12 +311,12 @@ class Trainer(nn.Module):
                     
                     # ---- Forward pass ----
                     out_lens = model.forward_unet(xb)
-                    out_lens_b = torch.cat([out_lens, xb - out_lens], dim=1)
-                    outputs = model.forward_resnet(out_lens_b)
+#                     out_lens = torch.cat([out_lens, xb - out_lens], dim=1)
+                    outputs = model.forward_resnet(out_lens)
 
                     loss1 = F.mse_loss(out_lens, xout)
                     loss2 = F.mse_loss(outputs, yb)
-                    loss = loss1 + loss2
+                    loss = 0.1 * loss1 + loss2
                     
                     val_loss += loss.item()
 
@@ -347,7 +347,7 @@ class Trainer(nn.Module):
             "epoch": epoch,
             "train_losses": self.train_losses,
             "val_losses": self.val_losses,
-        }, f"{model.model_name}_8.pth")
+        }, f"{model.model_name}_10.pth")
 
         
         
