@@ -287,7 +287,7 @@ class Trainer(nn.Module):
                 
                 loss1 = F.mse_loss(out_lens, xout)
                 loss2 = F.mse_loss(outputs, yb)
-                loss = 0.1 * loss1 + loss2
+                loss =  loss1 + 0.5 * loss2
                 
                 # ---- Backprop ----
                 loss.backward()
@@ -316,7 +316,7 @@ class Trainer(nn.Module):
 
                     loss1 = F.mse_loss(out_lens, xout)
                     loss2 = F.mse_loss(outputs, yb)
-                    loss = 0.1 * loss1 + loss2
+                    loss = loss1 + 0.5 * loss2
                     
                     val_loss += loss.item()
 
@@ -347,7 +347,7 @@ class Trainer(nn.Module):
             "epoch": epoch,
             "train_losses": self.train_losses,
             "val_losses": self.val_losses,
-        }, f"{model.model_name}_10.pth")
+        }, f"{model.model_name}_12.pth")
 
         
         
