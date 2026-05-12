@@ -1,4 +1,5 @@
 import torch
+from astropy.io import fits
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
@@ -19,16 +20,27 @@ class LensDataset(Dataset):
 
     def __len__(self):
         return len(self.df)
-
+    
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
 
         # filename stored in df, e.g. "sample_0001.pt"
-        tensor_path = os.path.join(self.path, row.name.split('/')[1] + '.pt')
-        
-        x = torch.load(tensor_path)
-        x = x[::2]
+#         tensor_path = os.path.join(self.path, row.name.split('/')[1] + '.pt')
 
+        path = os.path.join(self.path, row.name)
+        w1, w2 = 8, 232
+        with fits.open(path) as hdul:
+            c = random.randint(0, w1)
+            images = [hdul[i].data[w1+c:w2+c,w1+c:w2+c] for i in range(1, len(hdul)-2,2)]
+            arr = np.stack(images, axis=0)
+            
+        arr = np.array(arr, dtype=np.float32)   # fixes byte order
+        x = torch.from_numpy(arr) 
+#         x = torch.load(tensor_path)
+#         x = x[::2]
+         # image will be of dimension w2-w1 x w2-w1
+        
+        
         # Clamp and transform
         x = torch.clamp(x, min=0)
         x = torch.sqrt(x)
