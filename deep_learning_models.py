@@ -25,19 +25,20 @@ class LensDataset(Dataset):
         row = self.df.iloc[idx]
 
         # filename stored in df, e.g. "sample_0001.pt"
-#         tensor_path = os.path.join(self.path, row.name.split('/')[1] + '.pt')
+        tensor_path = os.path.join(self.path, row.name.split('/')[1] + '.pt')
 
-        path = os.path.join(self.path, row.name)
-        w1, w2 = 8, 232
-        with fits.open(path) as hdul:
-            c = random.randint(0, w1)
-            images = [hdul[i].data[w1+c:w2+c,w1+c:w2+c] for i in range(1, len(hdul)-2,2)]
-            arr = np.stack(images, axis=0)
+#         path = os.path.join(self.path, row.name)
+#         w1, w2 = 8, 232
+#         with fits.open(path) as hdul:
+#             c = random.randint(0, w1)
+#             images = [hdul[i].data[w1+c:w2+c,w1+c:w2+c] for i in range(1, len(hdul)-2,2)]
+#             arr = np.stack(images, axis=0)
             
-        arr = np.array(arr, dtype=np.float32)   # fixes byte order
-        x = torch.from_numpy(arr) 
-#         x = torch.load(tensor_path)
-#         x = x[::2]
+#         arr = np.array(arr, dtype=np.float32)   # fixes byte order
+#         x = torch.from_numpy(arr) 
+        x = torch.load(tensor_path)
+        x = x[::2]
+        x = x[:-1]
          # image will be of dimension w2-w1 x w2-w1
         
         
