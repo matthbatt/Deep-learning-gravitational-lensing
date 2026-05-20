@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
+import copy
 
 
 class Trainer(nn.Module):
@@ -186,7 +187,7 @@ class Trainer(nn.Module):
             for xb, yb in training_set:
                 
                 xb, xout = xb[0].to(device), xb[1].to(device)
-                yb = yb.to(device)
+                yb, _ = yb[0].to(device), yb[1]
                 
                 optimizer.zero_grad()
 
@@ -212,7 +213,7 @@ class Trainer(nn.Module):
                 for xb, yb in validation_set:
 
                     xb, xout = xb[0].to(device), xb[1].to(device)
-                    yb = yb.to(device)
+                    yb, _ = yb[0].to(device), yb[1]
 
                     outputs = model(xb)
                     loss = F.mse_loss(outputs, xout)
@@ -225,7 +226,7 @@ class Trainer(nn.Module):
             # ---- Save best model ----
             if val_loss < self.best_val_loss:
                 self.best_val_loss = val_loss
-                self.best_weights = self.model.state_dict()
+                self.best_weights = copy.deepcopy(model.state_dict())
                 self.early_stop_counter = 0
             else:
                 self.early_stop_counter += 1
@@ -245,7 +246,7 @@ class Trainer(nn.Module):
             "epoch": epoch,
             "train_losses": self.train_losses,
             "val_losses": self.val_losses,
-        }, f"{model.model_name}_2.pth")
+        }, f"{model.model_name}_3.pth")
         
  
 
@@ -276,7 +277,7 @@ class Trainer(nn.Module):
             for xb, yb in training_set:
                 
                 xb, xout = xb[0].to(device), xb[1].to(device)
-                yb = yb.to(device)
+                yb,_ = yb[0].to(device), yb[1]
                 
                 optimizer.zero_grad()
 
@@ -287,7 +288,7 @@ class Trainer(nn.Module):
                 
                 loss1 = F.mse_loss(out_lens, xout)
                 loss2 = F.mse_loss(outputs, yb)
-                loss =  loss1 + 0.025 * loss2
+                loss =  loss1 + 0.1 * loss2
                 
                 # ---- Backprop ----
                 loss.backward()
@@ -307,7 +308,7 @@ class Trainer(nn.Module):
                 for xb, yb in validation_set:
 
                     xb, xout = xb[0].to(device), xb[1].to(device)
-                    yb = yb.to(device)
+                    yb, _ = yb[0].to(device), yb[1]
                     
                     # ---- Forward pass ----
                     out_lens = model.forward_unet(xb)
@@ -316,7 +317,7 @@ class Trainer(nn.Module):
 
                     loss1 = F.mse_loss(out_lens, xout)
                     loss2 = F.mse_loss(outputs, yb)
-                    loss = loss1 + 0.025 * loss2
+                    loss = loss1 + 0.1 * loss2
                     
                     val_loss += loss.item()
 
@@ -327,7 +328,7 @@ class Trainer(nn.Module):
             # ---- Save best model ----
             if val_loss < self.best_val_loss:
                 self.best_val_loss = val_loss
-                self.best_weights = self.model.state_dict()
+                self.best_weights = copy.deepcopy(model.state_dict())
                 self.early_stop_counter = 0
             else:
                 self.early_stop_counter += 1
@@ -347,7 +348,7 @@ class Trainer(nn.Module):
             "epoch": epoch,
             "train_losses": self.train_losses,
             "val_losses": self.val_losses,
-        }, f"{model.model_name}_15.pth")
+        }, f"{model.model_name}_16.pth")
 
         
         
@@ -428,7 +429,7 @@ class Trainer(nn.Module):
             # ---- Save best model ----
             if val_loss < self.best_val_loss:
                 self.best_val_loss = val_loss
-                self.best_weights = self.model.state_dict()
+                self.best_weights = copy.deepcopy(model.state_dict())
                 self.early_stop_counter = 0
             else:
                 self.early_stop_counter += 1

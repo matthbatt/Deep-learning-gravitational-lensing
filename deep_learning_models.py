@@ -27,21 +27,10 @@ class LensDataset(Dataset):
         # filename stored in df, e.g. "sample_0001.pt"
         tensor_path = os.path.join(self.path, row.name.split('/')[1] + '.pt')
 
-#         path = os.path.join(self.path, row.name)
-#         w1, w2 = 8, 232
-#         with fits.open(path) as hdul:
-#             c = random.randint(0, w1)
-#             images = [hdul[i].data[w1+c:w2+c,w1+c:w2+c] for i in range(1, len(hdul)-2,2)]
-#             arr = np.stack(images, axis=0)
-            
-#         arr = np.array(arr, dtype=np.float32)   # fixes byte order
-#         x = torch.from_numpy(arr) 
         x = torch.load(tensor_path)
         x = x[::2]
         # x = x[:-1]
-         # image will be of dimension w2-w1 x w2-w1
-        
-        
+ 
         # Clamp and transform
         x = torch.clamp(x, min=0)
         x = torch.sqrt(x)
@@ -101,7 +90,7 @@ class LensDataset_UNet(Dataset):
         # label
         y = torch.tensor(row.values, dtype=torch.float32)
 
-        return (x[::2], x[1::2]), y # x[::2] are the 4 bands g-r-i-z for the lens + source, x[1::2] are the 4 bands with the lens only.
+        return (x[::2], x[1::2]), (y, row.name) # x[::2] are the 4 bands g-r-i-z for the lens + source, x[1::2] are the 4 bands with the lens only.
     
     def split_data(self, training_pct, test_pct, batch_size):
  
