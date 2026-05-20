@@ -38,7 +38,7 @@ class LensDataset(Dataset):
 #         x = torch.from_numpy(arr) 
         x = torch.load(tensor_path)
         x = x[::2]
-        # x = x[:-1]
+        x = x[:-1]
          # image will be of dimension w2-w1 x w2-w1
         
         
