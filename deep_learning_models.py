@@ -125,7 +125,7 @@ class viewer():
         self.model = model
     
     def show_model(self):
-        x = torch.randn(1, 4, 140, 140) 
+        x = torch.randn(1, 4, 224, 224) 
 
         y = self.model(x)
 
@@ -234,12 +234,30 @@ class ResNetHoliSmokes(nn.Module):
         self.layer4 = BasicBlock(128, 256, stride=1)
         self.pool4 = nn.MaxPool2d(2)
         
-        # Regression head
+        self.final_pool = nn.AdaptiveAvgPool2d((4, 4))
+        # self.fc = nn.Sequential(
+        #     nn.Linear(50176, 4096),
+        #     nn.ReLU(),
+        #     nn.Linear(4096, 1024),
+        #     nn.ReLU(),
+        #     nn.Linear(1024, 256),
+        #     nn.ReLU(),
+        #     nn.Linear(256, num_outputs)
+        # )
+
         self.fc = nn.Sequential(
-            nn.Linear(256,128),
+            nn.Linear(4096, 512),
             nn.ReLU(),
-            nn.Linear(128, num_outputs)
+            nn.Linear(512, num_outputs)
         )
+
+        
+        # Regression head
+        # self.fc = nn.Sequential(
+        #     nn.Linear(256,128),
+        #     nn.ReLU(),
+        #     nn.Linear(128, num_outputs)
+        # )
 
     def forward(self, x):
         x = F.relu(self.bn_in(self.conv_in(x)))
@@ -248,9 +266,10 @@ class ResNetHoliSmokes(nn.Module):
         x = self.pool2(self.layer2(x))
         x = self.pool3(self.layer3(x))
         x = self.pool4(self.layer4(x))
-#         x = x.view(x.size(0), -1)
+        x = self.final_pool(x)
+        x = x.view(x.size(0), -1)
         # Global average pooling
-        x = x.mean(dim=[2, 3])  # shape: [B, 256]
+        # x = x.mean(dim=[2, 3])  # shape: [B, 256]
         return self.fc(x)
    
 
