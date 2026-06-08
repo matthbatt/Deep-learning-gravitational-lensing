@@ -85,6 +85,7 @@ class LensDataset_UNet(Dataset):
         x = torch.load(tensor_path)
 #         x = torch.asinh(x)
         x = torch.clamp(x, min=0)
+        # x = (x - x.mean())/x.std()
         x = torch.sqrt(x)
 
         # label
@@ -234,7 +235,7 @@ class ResNetHoliSmokes(nn.Module):
         self.layer4 = BasicBlock(128, 256, stride=1)
         self.pool4 = nn.MaxPool2d(2)
         
-        self.final_pool = nn.AdaptiveAvgPool2d((4, 4))
+        self.final_pool = nn.AdaptiveAvgPool2d((7, 7))
         # self.fc = nn.Sequential(
         #     nn.Linear(50176, 4096),
         #     nn.ReLU(),
@@ -245,19 +246,22 @@ class ResNetHoliSmokes(nn.Module):
         #     nn.Linear(256, num_outputs)
         # )
 
-        self.fc = nn.Sequential(
-            nn.Linear(4096, 512),
-            nn.ReLU(),
-            nn.Linear(512, num_outputs)
-        )
-
-        
-        # Regression head
         # self.fc = nn.Sequential(
-        #     nn.Linear(256,128),
+        #     nn.Linear(4096, 512),
         #     nn.ReLU(),
-        #     nn.Linear(128, num_outputs)
+        #     nn.Linear(512, num_outputs)
         # )
+        # self.fc = nn.Sequential(
+        #     nn.Linear(12544, 512),
+        #     nn.ReLU(),
+        #     nn.Linear(512, num_outputs)
+        # )
+        # # Regression head
+        self.fc = nn.Sequential(
+            nn.Linear(256,128),
+            nn.ReLU(),
+            nn.Linear(128, num_outputs)
+        )
 
     def forward(self, x):
         x = F.relu(self.bn_in(self.conv_in(x)))
@@ -266,10 +270,10 @@ class ResNetHoliSmokes(nn.Module):
         x = self.pool2(self.layer2(x))
         x = self.pool3(self.layer3(x))
         x = self.pool4(self.layer4(x))
-        x = self.final_pool(x)
-        x = x.view(x.size(0), -1)
+        # x = self.final_pool(x)
+        # x = x.view(x.size(0), -1)
         # Global average pooling
-        # x = x.mean(dim=[2, 3])  # shape: [B, 256]
+        x = x.mean(dim=[2, 3])  # shape: [B, 256]
         return self.fc(x)
    
 
@@ -494,6 +498,7 @@ class UNet(nn.Module):
         x2 = self.down1(x1)
         x3 = self.down2(x2)
         x4 = self.down3(x3)
+        # print(x4.shape)
 #         x5 = self.down4(x4)
         
 #         x = self.up1(x5, x4)
@@ -506,6 +511,150 @@ class UNet(nn.Module):
             return logits, x4
         else:
             return logits
+
+
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+
+class DoubleConv(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super().__init__()
+
+        self.net = nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, 3, padding=1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+
+            nn.Conv2d(out_channels, out_channels, 3, padding=1, bias=False),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True),
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
+
+class UNetPlusPlus(nn.Module):
+    """
+    U-Net++ (Nested U-Net)
+
+    x0_0 -------- x0_1 -------- x0_2 -------- x0_3
+      |             |             |             |
+      v             v             v             v
+    x1_0 -------- x1_1 -------- x1_2 --------
+      |             |             |
+      v             v             v
+    x2_0 -------- x2_1 --------
+      |             |
+      v             v
+    x3_0 --------
+    """
+
+    def __init__(
+        self,
+        in_channels=4,
+        out_channels=4,
+        base_channels=64,
+        deep_supervision=False,
+    ):
+        super().__init__()
+
+        self.model_name = "UNet++"
+        self.deep_supervision = deep_supervision
+
+        nb = [
+            base_channels,
+            base_channels * 2,
+            base_channels * 4,
+            base_channels * 8,
+        ]
+
+        self.pool = nn.MaxPool2d(2)
+        self.up = lambda x: F.interpolate(
+            x, scale_factor=2, mode="bilinear", align_corners=True
+        )
+
+        # Encoder
+        self.conv0_0 = DoubleConv(in_channels, nb[0])
+        self.conv1_0 = DoubleConv(nb[0], nb[1])
+        self.conv2_0 = DoubleConv(nb[1], nb[2])
+        self.conv3_0 = DoubleConv(nb[2], nb[3])
+
+        # Nested decoder
+        self.conv0_1 = DoubleConv(nb[0] + nb[1], nb[0])
+
+        self.conv1_1 = DoubleConv(nb[1] + nb[2], nb[1])
+        self.conv0_2 = DoubleConv(nb[0] * 2 + nb[1], nb[0])
+
+        self.conv2_1 = DoubleConv(nb[2] + nb[3], nb[2])
+        self.conv1_2 = DoubleConv(nb[1] * 2 + nb[2], nb[1])
+        self.conv0_3 = DoubleConv(nb[0] * 3 + nb[1], nb[0])
+
+        # outputs
+        self.final = nn.Conv2d(nb[0], out_channels, kernel_size=1)
+
+        if deep_supervision:
+            self.final1 = nn.Conv2d(nb[0], out_channels, 1)
+            self.final2 = nn.Conv2d(nb[0], out_channels, 1)
+            self.final3 = nn.Conv2d(nb[0], out_channels, 1)
+
+    def forward(self, x, return_latent=False):
+
+        # encoder
+        x0_0 = self.conv0_0(x)
+
+        x1_0 = self.conv1_0(self.pool(x0_0))
+
+        x2_0 = self.conv2_0(self.pool(x1_0))
+
+        x3_0 = self.conv3_0(self.pool(x2_0))
+
+        # level 1
+        x0_1 = self.conv0_1(
+            torch.cat([x0_0, self.up(x1_0)], dim=1)
+        )
+
+        x1_1 = self.conv1_1(
+            torch.cat([x1_0, self.up(x2_0)], dim=1)
+        )
+
+        x2_1 = self.conv2_1(
+            torch.cat([x2_0, self.up(x3_0)], dim=1)
+        )
+
+        # level 2
+        x0_2 = self.conv0_2(
+            torch.cat([x0_0, x0_1, self.up(x1_1)], dim=1)
+        )
+
+        x1_2 = self.conv1_2(
+            torch.cat([x1_0, x1_1, self.up(x2_1)], dim=1)
+        )
+
+        # level 3
+        x0_3 = self.conv0_3(
+            torch.cat([x0_0, x0_1, x0_2, self.up(x1_2)], dim=1)
+        )
+
+        if self.deep_supervision:
+            y1 = self.final1(x0_1)
+            y2 = self.final2(x0_2)
+            y3 = self.final3(x0_3)
+
+            if return_latent:
+                return [y1, y2, y3], x3_0
+
+            return [y1, y2, y3]
+
+        logits = self.final(x0_3)
+
+        if return_latent:
+            return logits, x3_0
+
+        return logits
 
 
 
@@ -569,7 +718,95 @@ class UNetThenNN(nn.Module):
     
     def forward_latentNN(self, x):
         return self.latentNN(x)
+
+
+
+
+
+
+
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+class ResNetHoliSmokesBayesian(nn.Module):
+    def __init__(self, num_outputs=5):
+        super().__init__()
+        self.model_name = 'ResNetHoliSmokesBayesian'
+        self.num_outputs = num_outputs
+
+        # Input: 4 channels (g,r,i,z)
+        self.conv_in = nn.Conv2d(4, 32, kernel_size=3, padding=1, bias=False)
+        self.bn_in = nn.BatchNorm2d(32)
+
+        # Residual blocks
+        self.layer1 = BasicBlock(32, 32)
+        self.pool1 = nn.MaxPool2d(2)
+
+        self.layer2 = BasicBlock(32, 64)
+        self.pool2 = nn.MaxPool2d(2)
+
+        self.layer3 = BasicBlock(64, 128)
+        self.pool3 = nn.MaxPool2d(2)
+
+        self.layer4 = BasicBlock(128, 256)
+        self.pool4 = nn.MaxPool2d(2)
+
+        # Global pooling
+        self.final_pool = nn.AdaptiveAvgPool2d((1, 1))
+
+        # Bayesian head: mean + log variance
+        self.fc = nn.Sequential(
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Linear(128, num_outputs * 2)  # μ and logσ²
+        )
+
+    def forward(self, x, sample=True):
+        x = F.relu(self.bn_in(self.conv_in(x)))
+
+        x = self.pool1(self.layer1(x))
+        x = self.pool2(self.layer2(x))
+        x = self.pool3(self.layer3(x))
+        x = self.pool4(self.layer4(x))
+
+        x = self.final_pool(x)
+        x = x.view(x.size(0), -1)  # [B, 256]
+
+        out = self.fc(x)
     
+        mu = out[:, :self.num_outputs]
+        log_var = out[:, self.num_outputs:]
+        log_var = torch.clamp(log_var, -10, 10)
+        std = torch.exp(0.5 * log_var)
+    
+        if not sample:
+            return mu, std
+    
+        eps = torch.randn_like(std)
+        y = mu + std * eps
+        return y, mu, std
+
+
+
+class UNetBayesian(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.model_name = "UNetBayesian"
+        self.unet = UNet()                     # first stage
+        self.resnet = ResNetHoliSmokesBayesian()       # second stage
+
+    def forward(self, x):
+        features = self.forward_unet(x)
+        return self.forward_resnet(features)
+    
+    def forward_unet(self, x):
+        return self.unet(x) 
+    
+    def forward_resnet(self, x):
+        return self.resnet(x)
+
 
 # dimensions X = [2000, 4, 140, 140]
 # then [2000, 8, 140, 140] because padding of 1, and 8 filters of size 3x3

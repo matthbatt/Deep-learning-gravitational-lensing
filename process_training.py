@@ -348,14 +348,12 @@ class Trainer(nn.Module):
             "epoch": epoch,
             "train_losses": self.train_losses,
             "val_losses": self.val_losses,
-        }, f"{model.model_name}_17.pth")
+        }, f"{model.model_name}_19.pth")
 
         
         
         
-        
-        
-        
+
 ###############################################################U Net and Classical NN
 
     def run_unet_NN(self, epochs, training_set, validation_set, **kwargs):
