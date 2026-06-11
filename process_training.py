@@ -4,7 +4,6 @@ import torch.optim as optim
 import torch.nn.functional as F
 import copy
 
-
 class Trainer(nn.Module):
     def __init__(self, model, learning_rate, scheduler_coef):
         super().__init__()
@@ -246,12 +245,8 @@ class Trainer(nn.Module):
             "epoch": epoch,
             "train_losses": self.train_losses,
             "val_losses": self.val_losses,
-        }, f"{model.model_name}_3.pth")
+        }, f"{model.model_name}_4.pth")
         
- 
-
-
-
 ####################################################################### Training for U Net then Resnet
 
     def run_unet_resnet(self, epochs, training_set, validation_set, **kwargs):
@@ -303,6 +298,8 @@ class Trainer(nn.Module):
             # ---- VALIDATION ----
             model.eval()
             val_loss = 0.0
+            loss_1 = 0
+            loss_2 = 0
 
             with torch.no_grad():
                 for xb, yb in validation_set:
@@ -318,7 +315,8 @@ class Trainer(nn.Module):
                     loss1 = F.mse_loss(out_lens, xout)
                     loss2 = F.mse_loss(outputs, yb)
                     loss = loss1 + 0.1 * loss2
-                    
+                    loss_1 += loss1.item()
+                    loss_2 += loss2.item()
                     val_loss += loss.item()
 
                 self.val_losses.append(val_loss / len(validation_set))
@@ -334,6 +332,7 @@ class Trainer(nn.Module):
                 self.early_stop_counter += 1
 
             print(f"Epoch {epoch+1}: train={self.train_losses[-1]:.4f}, val={self.val_losses[-1]:.4f}")
+            print(f"Validation loss 1 {loss_1 / len(validation_set)}, Validation loss 2 {loss_2/ len(validation_set)}")
 
             # ---- EARLY STOPPING ----
             if self.early_stop_counter >= self.patience:
@@ -438,7 +437,6 @@ class Trainer(nn.Module):
             if self.early_stop_counter >= self.patience:
                 print(f"Early stopping triggered at epoch {epoch+1}")
                 break
-                
                 
         # ---- Save model ----
         torch.save({

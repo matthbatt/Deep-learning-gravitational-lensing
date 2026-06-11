@@ -38,7 +38,7 @@ class LensDataset(Dataset):
         # label
         y = torch.tensor(row.values, dtype=torch.float32)
 
-        return x, y
+        return (x), (y, row.name)
     
     def split_data(self, training_pct, test_pct, batch_size):
  
@@ -493,24 +493,41 @@ class UNet(nn.Module):
         self.up4 = Up(base_channels * 2, base_channels, bilinear)
         self.outc = OutConv(base_channels, out_channels)
 
-    def forward(self, x, return_latent=False):
-        x1 = self.inc(x)
-        x2 = self.down1(x1)
-        x3 = self.down2(x2)
-        x4 = self.down3(x3)
-        # print(x4.shape)
-#         x5 = self.down4(x4)
-        
-#         x = self.up1(x5, x4)
-        x = self.up2(x4, x3)
-        x = self.up3(x, x2)
-        x = self.up4(x, x1)
+
+    def forward(self, x, return_latent=False, p=0.03):
+        x1 = F.dropout(self.inc(x), p=p, training=True)
+        x2 = F.dropout(self.down1(x1), p=p, training=True)
+        x3 = F.dropout(self.down2(x2), p=p, training=True)
+        x4 = F.dropout(self.down3(x3), p=p, training=True)
+    
+        x = F.dropout(self.up2(x4, x3), p=p, training=True)
+        x = F.dropout(self.up3(x, x2), p=p, training=True)
+        x = F.dropout(self.up4(x, x1), p=p, training=True)
         logits = self.outc(x)
         
         if return_latent:
             return logits, x4
         else:
             return logits
+
+#     def forward(self, x, return_latent=False):
+#         x1 = self.inc(x)
+#         x2 = self.down1(x1)
+#         x3 = self.down2(x2)
+#         x4 = self.down3(x3)
+#         # print(x4.shape)
+# #         x5 = self.down4(x4)
+        
+# #         x = self.up1(x5, x4)
+#         x = self.up2(x4, x3)
+#         x = self.up3(x, x2)
+#         x = self.up4(x, x1)
+#         logits = self.outc(x)
+        
+#         if return_latent:
+#             return logits, x4
+#         else:
+#             return logits
 
 
 
@@ -763,30 +780,26 @@ class ResNetHoliSmokesBayesian(nn.Module):
             nn.Linear(128, num_outputs * 2)  # μ and logσ²
         )
 
-    def forward(self, x, sample=True):
+    def forward(self, x, p=0.03):
         x = F.relu(self.bn_in(self.conv_in(x)))
-
-        x = self.pool1(self.layer1(x))
-        x = self.pool2(self.layer2(x))
-        x = self.pool3(self.layer3(x))
-        x = self.pool4(self.layer4(x))
-
+        x = F.dropout(self.pool1(self.layer1(x)), p=p, training=True)
+        x = F.dropout(self.pool2(self.layer2(x)), p=p, training=True)
+        x = F.dropout(self.pool3(self.layer3(x)), p=p, training=True)
+        x = F.dropout(self.pool4(self.layer4(x)), p=p, training=True)
         x = self.final_pool(x)
-        x = x.view(x.size(0), -1)  # [B, 256]
-
-        out = self.fc(x)
-    
+        x = x.view(x.size(0), -1)
+        x = F.dropout(x, p=p, training=True)  # also on FC input
+        out = self.fc(x)    
         mu = out[:, :self.num_outputs]
         log_var = out[:, self.num_outputs:]
         log_var = torch.clamp(log_var, -10, 10)
         std = torch.exp(0.5 * log_var)
     
-        if not sample:
-            return mu, std
+        return mu, std
     
-        eps = torch.randn_like(std)
-        y = mu + std * eps
-        return y, mu, std
+        # eps = torch.randn_like(std)
+        # y = mu + std * eps
+        # return y, mu, std
 
 
 
