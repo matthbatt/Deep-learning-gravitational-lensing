@@ -276,14 +276,16 @@ class Trainer(nn.Module):
                 
                 optimizer.zero_grad()
 
-                # ---- Forward pass ----
-                out_lens = model.forward_unet(xb)
-#                 out_lens = torch.cat([out_lens, xb - out_lens], dim=1)
-                outputs = model.forward_resnet(out_lens)
+#                 # ---- Forward pass ----
+                # out_lens = model.forward_unet(xb)
+# #                 out_lens = torch.cat([out_lens, xb - out_lens], dim=1)
+                # outputs = model.forward_resnet(out_lens)
+                outputs = model(xb)
                 
-                loss1 = F.mse_loss(out_lens, xout)
-                loss2 = F.mse_loss(outputs, yb)
-                loss =  loss1 + 0.1 * loss2
+                # loss1 = F.mse_loss(out_lens, xout)
+                loss = F.mse_loss(outputs, yb)
+                # loss =  loss1 + 0.1 * loss2
+                
                 
                 # ---- Backprop ----
                 loss.backward()
@@ -308,15 +310,16 @@ class Trainer(nn.Module):
                     yb, _ = yb[0].to(device), yb[1]
                     
                     # ---- Forward pass ----
-                    out_lens = model.forward_unet(xb)
+                    # out_lens = model.forward_unet(xb)
 #                     out_lens = torch.cat([out_lens, xb - out_lens], dim=1)
-                    outputs = model.forward_resnet(out_lens)
+                    # outputs = model.forward_resnet(out_lens)
+                    outputs = model(xb)
 
-                    loss1 = F.mse_loss(out_lens, xout)
-                    loss2 = F.mse_loss(outputs, yb)
-                    loss = loss1 + 0.1 * loss2
-                    loss_1 += loss1.item()
-                    loss_2 += loss2.item()
+                    # loss1 = F.mse_loss(out_lens, xout)
+                    loss = F.mse_loss(outputs, yb)
+                    # loss = loss1 + 0.1 * loss2
+                    # loss_1 += loss1.item()
+                    # loss_2 += loss2.item()
                     val_loss += loss.item()
 
                 self.val_losses.append(val_loss / len(validation_set))
@@ -332,7 +335,7 @@ class Trainer(nn.Module):
                 self.early_stop_counter += 1
 
             print(f"Epoch {epoch+1}: train={self.train_losses[-1]:.4f}, val={self.val_losses[-1]:.4f}")
-            print(f"Validation loss 1 {loss_1 / len(validation_set)}, Validation loss 2 {loss_2/ len(validation_set)}")
+            # print(f"Validation loss 1 {loss_1 / len(validation_set)}, Validation loss 2 {loss_2/ len(validation_set)}")
 
             # ---- EARLY STOPPING ----
             if self.early_stop_counter >= self.patience:
@@ -347,7 +350,7 @@ class Trainer(nn.Module):
             "epoch": epoch,
             "train_losses": self.train_losses,
             "val_losses": self.val_losses,
-        }, f"{model.model_name}_19.pth")
+        }, f"{model.model_name}_22.pth")
 
         
         

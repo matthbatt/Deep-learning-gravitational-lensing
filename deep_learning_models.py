@@ -83,9 +83,18 @@ class LensDataset_UNet(Dataset):
 
         # load the tensor
         x = torch.load(tensor_path)
-#         x = torch.asinh(x)
+# #         x = torch.asinh(x)
+#         x = torch.clamp(x, min=0)
+#         # x = (x - x.mean())/x.std()
+#         x = torch.sqrt(x)
+
         x = torch.clamp(x, min=0)
-        # x = (x - x.mean())/x.std()
+
+        # Min-max normalization per channel
+        x_min = x.amin(dim=(1, 2), keepdim=True)
+        x_max = x.amax(dim=(1, 2), keepdim=True)
+        # print(x_min.shape, x_max.shape)
+        x = (x - x_min) / (x_max - x_min + 1e-8)
         x = torch.sqrt(x)
 
         # label
@@ -118,6 +127,7 @@ class LensDataset_UNet(Dataset):
         test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=3)
         
         return train_loader, val_loader, test_loader
+
 
 ######################################################################################### View architechture
 
@@ -236,26 +246,7 @@ class ResNetHoliSmokes(nn.Module):
         self.pool4 = nn.MaxPool2d(2)
         
         self.final_pool = nn.AdaptiveAvgPool2d((7, 7))
-        # self.fc = nn.Sequential(
-        #     nn.Linear(50176, 4096),
-        #     nn.ReLU(),
-        #     nn.Linear(4096, 1024),
-        #     nn.ReLU(),
-        #     nn.Linear(1024, 256),
-        #     nn.ReLU(),
-        #     nn.Linear(256, num_outputs)
-        # )
 
-        # self.fc = nn.Sequential(
-        #     nn.Linear(4096, 512),
-        #     nn.ReLU(),
-        #     nn.Linear(512, num_outputs)
-        # )
-        # self.fc = nn.Sequential(
-        #     nn.Linear(12544, 512),
-        #     nn.ReLU(),
-        #     nn.Linear(512, num_outputs)
-        # )
         # # Regression head
         self.fc = nn.Sequential(
             nn.Linear(256,128),
@@ -264,16 +255,20 @@ class ResNetHoliSmokes(nn.Module):
         )
 
     def forward(self, x):
+        # print(x.shape)
         x = F.relu(self.bn_in(self.conv_in(x)))
-
+        # print(x.shape)
         x = self.pool1(self.layer1(x))
+        # print(x.shape)
         x = self.pool2(self.layer2(x))
+        # print(x.shape)
         x = self.pool3(self.layer3(x))
+        # print(x.shape)
         x = self.pool4(self.layer4(x))
-        # x = self.final_pool(x)
-        # x = x.view(x.size(0), -1)
+        # print(x.shape)
         # Global average pooling
         x = x.mean(dim=[2, 3])  # shape: [B, 256]
+        # print(x.shape)
         return self.fc(x)
    
 
@@ -494,15 +489,23 @@ class UNet(nn.Module):
         self.outc = OutConv(base_channels, out_channels)
 
 
-    def forward(self, x, return_latent=False, p=0.03):
+    def forward(self, x, return_latent=False, p=0):
+        # print(x.shape)
         x1 = F.dropout(self.inc(x), p=p, training=True)
+        # print(x1.shape)
         x2 = F.dropout(self.down1(x1), p=p, training=True)
+        # print(x2.shape)
         x3 = F.dropout(self.down2(x2), p=p, training=True)
+        # print(x3.shape)
         x4 = F.dropout(self.down3(x3), p=p, training=True)
+        # print(x4.shape)
     
         x = F.dropout(self.up2(x4, x3), p=p, training=True)
+        # print(x.shape)
         x = F.dropout(self.up3(x, x2), p=p, training=True)
+        # print(x.shape)
         x = F.dropout(self.up4(x, x1), p=p, training=True)
+        # print(x.shape)
         logits = self.outc(x)
         
         if return_latent:
@@ -745,7 +748,6 @@ class UNetThenNN(nn.Module):
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 class ResNetHoliSmokesBayesian(nn.Module):
     def __init__(self, num_outputs=5):
@@ -753,54 +755,57 @@ class ResNetHoliSmokesBayesian(nn.Module):
         self.model_name = 'ResNetHoliSmokesBayesian'
         self.num_outputs = num_outputs
 
-        # Input: 4 channels (g,r,i,z)
         self.conv_in = nn.Conv2d(4, 32, kernel_size=3, padding=1, bias=False)
         self.bn_in = nn.BatchNorm2d(32)
 
-        # Residual blocks
         self.layer1 = BasicBlock(32, 32)
         self.pool1 = nn.MaxPool2d(2)
-
         self.layer2 = BasicBlock(32, 64)
         self.pool2 = nn.MaxPool2d(2)
-
         self.layer3 = BasicBlock(64, 128)
         self.pool3 = nn.MaxPool2d(2)
-
         self.layer4 = BasicBlock(128, 256)
         self.pool4 = nn.MaxPool2d(2)
 
-        # Global pooling
         self.final_pool = nn.AdaptiveAvgPool2d((1, 1))
 
-        # Bayesian head: mean + log variance
-        self.fc = nn.Sequential(
+        # Shared trunk
+        self.fc_shared = nn.Sequential(
+            nn.Dropout(p=0.2),
             nn.Linear(256, 128),
             nn.ReLU(),
-            nn.Linear(128, num_outputs * 2)  # μ and logσ²
+            nn.Dropout(p=0.2),
         )
 
-    def forward(self, x, p=0.03):
+        # Separate heads
+        self.fc_mu = nn.Linear(128, num_outputs)
+
+        self.fc_logvar = nn.Sequential(
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Linear(64, num_outputs)
+        )
+
+        nn.init.zeros_(self.fc_logvar[-1].bias)
+        nn.init.normal_(self.fc_logvar[-1].weight, std=0.01)
+
+    def forward(self, x):
         x = F.relu(self.bn_in(self.conv_in(x)))
-        x = F.dropout(self.pool1(self.layer1(x)), p=p, training=True)
-        x = F.dropout(self.pool2(self.layer2(x)), p=p, training=True)
-        x = F.dropout(self.pool3(self.layer3(x)), p=p, training=True)
-        x = F.dropout(self.pool4(self.layer4(x)), p=p, training=True)
+        x = self.pool1(self.layer1(x))
+        x = self.pool2(self.layer2(x))
+        x = self.pool3(self.layer3(x))
+        x = self.pool4(self.layer4(x))
         x = self.final_pool(x)
         x = x.view(x.size(0), -1)
-        x = F.dropout(x, p=p, training=True)  # also on FC input
-        out = self.fc(x)    
-        mu = out[:, :self.num_outputs]
-        log_var = out[:, self.num_outputs:]
-        log_var = torch.clamp(log_var, -10, 10)
-        std = torch.exp(0.5 * log_var)
-    
-        return mu, std
-    
-        # eps = torch.randn_like(std)
-        # y = mu + std * eps
-        # return y, mu, std
 
+        features = self.fc_shared(x)
+
+        mu = self.fc_mu(features)
+
+        log_var = self.fc_logvar(features)
+        log_var = torch.clamp(log_var, -6, 6)  
+
+        return mu, log_var
 
 
 class UNetBayesian(nn.Module):
