@@ -90,11 +90,11 @@ class LensDataset_UNet(Dataset):
 
         x = torch.clamp(x, min=0)
 
-        # Min-max normalization per channel
-        x_min = x.amin(dim=(1, 2), keepdim=True)
-        x_max = x.amax(dim=(1, 2), keepdim=True)
-        # print(x_min.shape, x_max.shape)
-        x = (x - x_min) / (x_max - x_min + 1e-8)
+        # # Min-max normalization per channel
+        # x_min = x.amin(dim=(1, 2), keepdim=True)
+        # x_max = x.amax(dim=(1, 2), keepdim=True)
+        # # print(x_min.shape, x_max.shape)
+        # x = (x - x_min) / (x_max - x_min + 1e-8)
         x = torch.sqrt(x)
 
         # label
