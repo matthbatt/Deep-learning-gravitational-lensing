@@ -272,19 +272,21 @@ class Trainer(nn.Module):
             for xb, yb in training_set:
                 
                 xb, xout = xb[0].to(device), xb[1].to(device)
+                xb = xb.unsqueeze(1)
+                xout = xout.unsqueeze(1)
                 yb,_ = yb[0].to(device), yb[1]
-                
+                # yb = yb.unsqueeze(1)
                 optimizer.zero_grad()
 
 #                 # ---- Forward pass ----
-                # out_lens = model.forward_unet(xb)
+                out_lens = model.forward_unet(xb)
 # #                 out_lens = torch.cat([out_lens, xb - out_lens], dim=1)
-                # outputs = model.forward_resnet(out_lens)
-                outputs = model(xb)
+                outputs = model.forward_resnet(out_lens)
+                # outputs = model(xb)
                 
-                # loss1 = F.mse_loss(out_lens, xout)
-                loss = F.mse_loss(outputs, yb)
-                # loss =  loss1 + 0.1 * loss2
+                loss1 = F.mse_loss(out_lens, xout)
+                loss2 = F.mse_loss(outputs, yb)
+                loss =  loss1 + 0.1 * loss2
                 
                 
                 # ---- Backprop ----
@@ -307,17 +309,19 @@ class Trainer(nn.Module):
                 for xb, yb in validation_set:
 
                     xb, xout = xb[0].to(device), xb[1].to(device)
+                    xb = xb.unsqueeze(1)
+                    xout = xout.unsqueeze(1)
                     yb, _ = yb[0].to(device), yb[1]
                     
                     # ---- Forward pass ----
-                    # out_lens = model.forward_unet(xb)
+                    out_lens = model.forward_unet(xb)
 #                     out_lens = torch.cat([out_lens, xb - out_lens], dim=1)
-                    # outputs = model.forward_resnet(out_lens)
-                    outputs = model(xb)
+                    outputs = model.forward_resnet(out_lens)
+                    # outputs = model(xb)
 
-                    # loss1 = F.mse_loss(out_lens, xout)
-                    loss = F.mse_loss(outputs, yb)
-                    # loss = loss1 + 0.1 * loss2
+                    loss1 = F.mse_loss(out_lens, xout)
+                    loss2 = F.mse_loss(outputs, yb)
+                    loss = loss1 + 0.1 * loss2
                     # loss_1 += loss1.item()
                     # loss_2 += loss2.item()
                     val_loss += loss.item()
@@ -350,7 +354,7 @@ class Trainer(nn.Module):
             "epoch": epoch,
             "train_losses": self.train_losses,
             "val_losses": self.val_losses,
-        }, f"{model.model_name}_22.pth")
+        }, f"{model.model_name}_euclid_10.pth")
 
         
         

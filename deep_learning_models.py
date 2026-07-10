@@ -11,93 +11,142 @@ from torch.utils.data import random_split
 import torch
 from torchviz import make_dot
 from IPython.display import Image
-################################################################# Load Dataset
+
+
+
+#################################################################
+# Dataset utilities
+#################################################################
 
 class LensDataset(Dataset):
+    """
+    PyTorch dataset for strong gravitational lensing images.
+
+    Each sample consists of:
+        - the input image tensor
+        - the corresponding ground-truth lens parameters
+
+    This dataset can be used to train ResNet, Vision Transformer,
+    or Bayesian ResNet models.
+    """
+
     def __init__(self, df, path_tensor_folder):
+        # DataFrame:
+        #   index   -> image path
+        #   columns -> target lens parameters
         self.df = df
+
+        # Directory containing the image tensors (.pt files)
         self.path = path_tensor_folder
 
     def __len__(self):
         return len(self.df)
-    
+
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
 
-        # filename stored in df, e.g. "sample_0001.pt"
-        tensor_path = os.path.join(self.path, row.name.split('/')[1] + '.pt')
+        # Build the path to the corresponding tensor file
+        tensor_path = os.path.join(
+            self.path,
+            row.name.split('/')[1] + '.pt'
+        )
 
+        # Load the image tensor
         x = torch.load(tensor_path)
+
+        # Keep only the lensed source and lens galaxy channels
         x = x[::2]
-        # x = x[:-1]
- 
-        # Clamp and transform
+
+        # Apply a square-root intensity transform
         x = torch.clamp(x, min=0)
         x = torch.sqrt(x)
-  
-        # label
+
+        # Load the ground-truth lens parameters
         y = torch.tensor(row.values, dtype=torch.float32)
 
-        return (x), (y, row.name)
-    
+        return x, (y, row.name)
+        
     def split_data(self, training_pct, test_pct, batch_size):
- 
+    
+        # Total number of samples
         n = len(self)
+
+        # Compute split sizes
         test_size = int(test_pct * n)
         remaining_size = n - test_size
 
+        # Fix the random seed to obtain the same test set
         generator = torch.Generator().manual_seed(42)
 
+        # Split into remaining data and test set
         remaining_dataset, test_dataset = random_split(
             self,
             [remaining_size, test_size],
-            generator=generator)
-
+            generator=generator,
+        )
+        # Split the remaining data into training and validation sets
         train_size = int(training_pct * n)
         val_size = remaining_size - train_size
 
         train_dataset, val_dataset = random_split(
             remaining_dataset,
-            [train_size, val_size])
-     
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=3)
-        val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=3)
-        test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=3)
-        
+            [train_size, val_size],
+        )
+
+        # Create data loaders
+        train_loader = DataLoader(
+            train_dataset,
+            batch_size=batch_size,
+            shuffle=True,
+            num_workers=3,
+        )
+
+        val_loader = DataLoader(
+            val_dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=3,
+        )
+
+        test_loader = DataLoader(
+            test_dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            num_workers=3,
+        )
+
         return train_loader, val_loader, test_loader
     
     
 class LensDataset_UNet(Dataset):
+    """
+    This class allows to load the images and the true parameters for training the model.
+    This class LensDataset is made for training the U-Net, the U-Net + ResNet.
+    """
+
     def __init__(self, df, path_tensor_folder):
         self.df = df
         self.path = path_tensor_folder
 
     def __len__(self):
         return len(self.df)
-
+        
     def __getitem__(self, idx):
         row = self.df.iloc[idx]
-
-        # filename stored in df, e.g. "sample_0001.pt"
-        tensor_path = os.path.join(self.path, row.name.split('/')[1] + '.pt')
+        tensor_path = os.path.join(self.path, row.name.split('/')[1] + '.pt') # +'.pt' because the images are stored into tensors files
 
         # load the tensor
         x = torch.load(tensor_path)
-# #         x = torch.asinh(x)
-#         x = torch.clamp(x, min=0)
-#         # x = (x - x.mean())/x.std()
-#         x = torch.sqrt(x)
-
         x = torch.clamp(x, min=0)
 
-        # # Min-max normalization per channel
+        # # Code for normalization , uncomment to make it active 
         # x_min = x.amin(dim=(1, 2), keepdim=True)
         # x_max = x.amax(dim=(1, 2), keepdim=True)
         # # print(x_min.shape, x_max.shape)
         # x = (x - x_min) / (x_max - x_min + 1e-8)
         x = torch.sqrt(x)
 
-        # label
+        # load the ground truth values
         y = torch.tensor(row.values, dtype=torch.float32)
 
         return (x[::2], x[1::2]), (y, row.name) # x[::2] are the 4 bands g-r-i-z for the lens + source, x[1::2] are the 4 bands with the lens only.
@@ -224,12 +273,12 @@ class BasicBlock(nn.Module):
 
 
 class ResNetHoliSmokes(nn.Module):
-    def __init__(self, num_outputs=5):
+    def __init__(self, num_outputs=2):
         super().__init__()
         self.model_name = 'ResNetHoliSmokes'
 
         # Input: 4 channels (g,r,i,z)
-        self.conv_in = nn.Conv2d(4, 32, kernel_size=3, padding=1, bias=False)
+        self.conv_in = nn.Conv2d(1, 32, kernel_size=3, padding=1, bias=False)
         self.bn_in = nn.BatchNorm2d(32)
 
         # 4 residual stages
@@ -468,8 +517,8 @@ class OutConv(nn.Module):
 
 class UNet(nn.Module):
     def __init__(self,
-                 in_channels=4,
-                 out_channels=4,
+                 in_channels=1,
+                 out_channels=1,
                  base_channels=64,
                  bilinear=True):
         super().__init__()
