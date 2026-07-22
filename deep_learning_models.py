@@ -178,7 +178,10 @@ class LensDataset_UNet(Dataset):
         return train_loader, val_loader, test_loader
 
 
-######################################################################################### View architechture
+#################################################################
+# View architechture
+#################################################################
+
 
 class viewer():
     def __init__(self, model):
@@ -193,7 +196,11 @@ class viewer():
         dot.format = "png"
         dot.render("resnetmini", directory=".", cleanup=True)
 
-########################################################################################################## ResNet Mini
+
+#################################################################
+# ResNet Mini
+#################################################################
+
 import torch.nn as nn
 import torch
 
@@ -237,9 +244,10 @@ class ResNetMini(nn.Module):
         x = x.view(x.size(0), -1)
         return self.fc(x)
     
+#################################################################
+# ResNetHoliSmokes and old bayesian Neural Network
+#################################################################
 
-
-##################################################################### ResNetHoliSmokes and Baysian neuron network
 
 class BasicBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1):
@@ -442,9 +450,11 @@ class BayesianResNetMini(nn.Module):
     
     def kl_divergence(self):
         return self.fcb.kl_divergence()
-    
-    
-############################################################################################################"""" U - NET
+
+
+#################################################################
+# U-NET
+#################################################################
 
 import torch
 import torch.nn as nn
@@ -581,6 +591,10 @@ class UNet(nn.Module):
 #         else:
 #             return logits
 
+
+#################################################################
+# U-NET ++
+#################################################################
 
 
 import torch
@@ -726,8 +740,10 @@ class UNetPlusPlus(nn.Module):
         return logits
 
 
+#################################################################
+# U-Net + ResNet
+#################################################################
 
-################################################################## U net then Resnet
     
     
 class UNetThenResNet(nn.Module):
@@ -747,9 +763,11 @@ class UNetThenResNet(nn.Module):
     def forward_resnet(self, x):
         return self.resnet(x)
     
-    
-    
-######################################################################## UNet then NN
+
+#################################################################
+# U-Net + NN
+#################################################################
+
 class LatentNN(nn.Module):
     def __init__(self, output_dim=5):
         super().__init__()
@@ -790,9 +808,9 @@ class UNetThenNN(nn.Module):
 
 
 
-
-
-
+#################################################################
+# Bayesian Neural Network
+#################################################################
 
 
 import torch
@@ -915,6 +933,9 @@ class ResNetHoliSmokesBayesian(nn.Module):
     
         return mu, log_var
 
+#################################################################
+# U-Net + ResNet Bayesian Neural Network
+#################################################################
 class UNetBayesian(nn.Module):
     """
     Two-stage Bayesian architecture.

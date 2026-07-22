@@ -31,3 +31,7 @@ The repository also includes scripts and notebooks used to reproduce the experim
 # How to run the models ?
 
 The models are trained using one GPU and three CPUs.
+
+# Hyperparameters
+
+All models are trained using a similar setup. The number of training epochs is set to 100, with a batch size of 32. The learning rate is initialized at $10^{-3}$ and is adjusted during training using a cosine annealing scheduler. Early stopping is triggered when the validation loss does not improve for 20 consecutive epochs. Prior to training, the images are preprocessed by setting all negative pixel values to zero and applying a square-root transformation.
