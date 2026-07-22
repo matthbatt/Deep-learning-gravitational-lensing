@@ -273,12 +273,12 @@ class BasicBlock(nn.Module):
 
 
 class ResNetHoliSmokes(nn.Module):
-    def __init__(self, num_outputs=2):
+    def __init__(self, num_outputs=5):
         super().__init__()
         self.model_name = 'ResNetHoliSmokes'
 
         # Input: 4 channels (g,r,i,z)
-        self.conv_in = nn.Conv2d(1, 32, kernel_size=3, padding=1, bias=False)
+        self.conv_in = nn.Conv2d(4, 32, kernel_size=3, padding=1, bias=False)
         self.bn_in = nn.BatchNorm2d(32)
 
         # 4 residual stages
@@ -517,8 +517,8 @@ class OutConv(nn.Module):
 
 class UNet(nn.Module):
     def __init__(self,
-                 in_channels=1,
-                 out_channels=1,
+                 in_channels=4,
+                 out_channels=4,
                  base_channels=64,
                  bilinear=True):
         super().__init__()
@@ -798,80 +798,162 @@ class UNetThenNN(nn.Module):
 import torch
 import torch.nn as nn
 
+
 class ResNetHoliSmokesBayesian(nn.Module):
+    """
+    Bayesian ResNet architecture for regression.
+
+    The network predicts:
+        - mu: the mean of each target variable.
+        - logvar: the logarithm of the predictive variance,
+                  allowing uncertainty estimation.
+    """
+
     def __init__(self, num_outputs=5):
         super().__init__()
+
+        # Model name (useful for logging/checkpointing)
         self.model_name = 'ResNetHoliSmokesBayesian'
         self.num_outputs = num_outputs
 
+        # ---------------------------------------------------------------------
+        # Feature extraction
+        # ---------------------------------------------------------------------
+
+        # Initial convolution adapted for 4-channel input images
         self.conv_in = nn.Conv2d(4, 32, kernel_size=3, padding=1, bias=False)
         self.bn_in = nn.BatchNorm2d(32)
 
+        # Residual feature extraction blocks
         self.layer1 = BasicBlock(32, 32)
         self.pool1 = nn.MaxPool2d(2)
+
         self.layer2 = BasicBlock(32, 64)
         self.pool2 = nn.MaxPool2d(2)
+
         self.layer3 = BasicBlock(64, 128)
         self.pool3 = nn.MaxPool2d(2)
+
         self.layer4 = BasicBlock(128, 256)
         self.pool4 = nn.MaxPool2d(2)
 
+        # Global average pooling reduces the feature map to a 256-dimensional vector
         self.final_pool = nn.AdaptiveAvgPool2d((1, 1))
 
-        # Shared trunk
+        # ---------------------------------------------------------------------
+        # Shared fully connected representation
+        # ---------------------------------------------------------------------
+
+        # Shared latent representation used by both prediction heads
         self.fc_shared = nn.Sequential(
-            nn.Dropout(p=0.2),
+            nn.Dropout(p=0.2),      # Regularization
             nn.Linear(256, 128),
             nn.ReLU(),
             nn.Dropout(p=0.2),
         )
 
-        # Separate heads
+        # ---------------------------------------------------------------------
+        # Output heads
+        # ---------------------------------------------------------------------
+
+        # Mean prediction (μ)
         self.fc_mu = nn.Linear(128, num_outputs)
 
+        # Log-variance prediction (log σ²)
+        # Predicting the log-variance improves numerical stability and
+        # guarantees a positive variance after exponentiation.
         self.fc_logvar = nn.Sequential(
             nn.Linear(128, 64),
             nn.ReLU(),
             nn.Linear(64, num_outputs)
         )
 
+        # Initialize the uncertainty head with small values to encourage
+        # stable training at the beginning of optimization.
         nn.init.zeros_(self.fc_logvar[-1].bias)
         nn.init.normal_(self.fc_logvar[-1].weight, std=0.01)
 
     def forward(self, x):
+        # -----------------------------------------------------------------
+        # Feature extraction
+        # -----------------------------------------------------------------
+    
+        # Initial convolution followed by batch normalization and ReLU activation
         x = F.relu(self.bn_in(self.conv_in(x)))
+    
+        # Residual blocks with progressive spatial downsampling
         x = self.pool1(self.layer1(x))
         x = self.pool2(self.layer2(x))
         x = self.pool3(self.layer3(x))
         x = self.pool4(self.layer4(x))
+    
+        # Global average pooling to obtain a fixed-length feature vector
         x = self.final_pool(x)
+    
+        # Flatten feature maps into a 1D vector
         x = x.view(x.size(0), -1)
 
+        # -----------------------------------------------------------------
+        # Shared latent representation
+        # -----------------------------------------------------------------
+    
+        # Compute the shared feature representation used by both output heads
         features = self.fc_shared(x)
-
+    
+        # -----------------------------------------------------------------
+        # Bayesian output heads
+        # -----------------------------------------------------------------
+    
+        # Predict the mean of each target variable
         mu = self.fc_mu(features)
-
+    
+        # Predict the logarithm of the predictive variance
         log_var = self.fc_logvar(features)
-        log_var = torch.clamp(log_var, -6, 6)  
-
+    
+        # Clamp log-variance to avoid numerical instability during training
+        log_var = torch.clamp(log_var, -6, 6)
+    
         return mu, log_var
 
-
 class UNetBayesian(nn.Module):
+    """
+    Two-stage Bayesian architecture.
+
+    Stage 1:
+        A U-Net generates a feature-enhanced representation of the input.
+
+    Stage 2:
+        A Bayesian ResNet predicts the target values together with their
+        associated uncertainties.
+    """
+
     def __init__(self):
         super().__init__()
+
+        # Model name (useful for logging and checkpointing)
         self.model_name = "UNetBayesian"
-        self.unet = UNet()                     # first stage
-        self.resnet = ResNetHoliSmokesBayesian()       # second stage
+
+        # -----------------------------------------------------------------
+        # Model components
+        # -----------------------------------------------------------------
+
+        # First stage: U-Net for feature extraction
+        self.unet = UNet()
+
+        # Second stage: Bayesian ResNet for regression and uncertainty estimation
+        self.resnet = ResNetHoliSmokesBayesian()
 
     def forward(self, x):
+        """Run the complete two-stage pipeline."""
         features = self.forward_unet(x)
         return self.forward_resnet(features)
-    
+
     def forward_unet(self, x):
-        return self.unet(x) 
-    
+        """Extract features using the U-Net."""
+        return self.unet(x)
+
     def forward_resnet(self, x):
+        """Predict the target means and uncertainties."""
         return self.resnet(x)
 
 

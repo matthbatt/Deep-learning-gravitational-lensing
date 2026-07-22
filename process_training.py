@@ -354,7 +354,7 @@ class Trainer(nn.Module):
             "epoch": epoch,
             "train_losses": self.train_losses,
             "val_losses": self.val_losses,
-        }, f"{model.model_name}_euclid_10.pth")
+        }, f"{model.model_name}_euclid_12.pth")
 
         
         
