@@ -27,3 +27,7 @@ The model architectures are defined in the Python files:
 - `process_training.py`: contains utility functions used for training, validation, and model optimization.
 
 The repository also includes scripts and notebooks used to reproduce the experiments presented in the paper, including model training, evaluation, and performance analysis.
+
+# How to run the models ?
+
+The models are trained using one GPU and three CPUs.
